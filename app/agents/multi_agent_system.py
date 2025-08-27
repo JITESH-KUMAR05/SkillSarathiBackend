@@ -15,7 +15,7 @@ from typing import Dict, Any, List, Optional, AsyncGenerator
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 import asyncio
 import json
 from datetime import datetime
