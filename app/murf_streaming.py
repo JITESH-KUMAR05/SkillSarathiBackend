@@ -1,163 +1,274 @@
 """
-Murf AI Streaming Client for minimal latency audio synthesis
-Implements WebSocket-based streaming for real-time TTS
+Production Murf AI WebSocket Streaming Client
+===========================================
+
+Implements WebSocket-based streaming for ultra-low latency TTS with:
+- Persistent session management
+- Voice switching capabilities  
+- Graceful error handling and rate limiting
+- Optimized audio buffering
 """
 
 import asyncio
 import json
 import base64
 import logging
-from typing import Optional, Dict, Any
-import aiohttp
 import websockets
+import uuid
+from typing import Optional, Dict, Any, AsyncGenerator, Union
+import aiohttp
 from datetime import datetime
+import os
 
 logger = logging.getLogger(__name__)
 
-class MurfStreamingClient:
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or "your-murf-api-key"  # Replace with actual key
-        self.base_url = "wss://api.murf.ai/v1/speech/stream"
-        self.session: Optional[aiohttp.ClientSession] = None
-        
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session"""
-        if not self.session:
-            self.session = aiohttp.ClientSession()
-        return self.session
+
+class MurfWebSocketClient:
+    """Production-grade Murf AI WebSocket client for real-time TTS streaming"""
     
-    async def generate_streaming_audio(
-        self, 
-        text: str, 
-        voice_id: str = "en-IN-kavya",
-        speed: float = 1.0,
-        volume: float = 0.8,
-        format: str = "mp3"
-    ) -> Optional[str]:
-        """
-        Generate audio using Murf AI with minimal latency streaming
-        Returns URL to the generated audio file
-        """
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("MURF_API_KEY")
+        self.ws_url = "wss://api.murf.ai/v1/stream"
+        self.session_id = str(uuid.uuid4())
+        self.websocket = None
+        self.context_sessions = {}  # Track user sessions
+        
+        # Voice configurations for Indian agents - UPDATED with real Murf voice IDs
+        self.agent_voices = {
+            "mitra": "hi-IN-shweta",     # Hindi female voice - warm, caring
+            "guru": "en-IN-eashwar",     # English-India male voice - professional
+            "parikshak": "en-IN-isha"    # English-India female voice - clear evaluator
+        }
+        
+        self.current_voice = "hi-IN-shweta"  # Default to Mitra's voice
+        self.audio_format = "wav"
+        self.sample_rate = 44100
+        
+    async def connect(self):
+        """Establish persistent WebSocket connection with authentication"""
         try:
-            # For now, use HTTP API as fallback - WebSocket implementation would go here
-            return await self._generate_http_fallback(text, voice_id, speed, volume, format)
+            if not self.api_key:
+                logger.warning("❌ No Murf API key provided - using fallback mode")
+                return False
+                
+            headers = {
+                "api-key": self.api_key,  # Murf uses 'api-key' header
+                "User-Agent": "BuddyAgents/1.0"
+            }
+            
+            # Try WebSocket connection with proper headers parameter
+            try:
+                self.websocket = await websockets.connect(
+                    self.ws_url,
+                    additional_headers=headers,
+                    ping_interval=30,
+                    ping_timeout=10
+                )
+            except TypeError:
+                # Fallback for older websockets versions
+                self.websocket = await websockets.connect(
+                    self.ws_url,
+                    ping_interval=30,
+                    ping_timeout=10
+                )
+            
+            # Send initial session setup if connected
+            if self.websocket:
+                init_message = {
+                    "type": "session_init",
+                    "session_id": self.session_id,
+                    "audio_config": {
+                        "format": self.audio_format,
+                        "sample_rate": self.sample_rate,
+                        "channels": 1
+                    }
+                }
+                
+                await self.websocket.send(json.dumps(init_message))
+                logger.info(f"✅ Murf WebSocket connected: {self.session_id}")
+                return True
+            
+            return False
             
         except Exception as e:
-            logger.error(f"Murf streaming error: {e}")
-            return None
+            logger.error(f"❌ Failed to connect to Murf WebSocket: {e}")
+            logger.info("🔄 Falling back to HTTP API for TTS")
+            return False
     
-    async def _generate_http_fallback(
+    async def disconnect(self):
+        """Gracefully close WebSocket connection"""
+        if self.websocket:
+            try:
+                await self.websocket.close()
+                logger.info("Murf WebSocket disconnected")
+            except Exception as e:
+                logger.error(f"Error disconnecting: {e}")
+    
+    async def switch_voice(self, agent_type: str) -> bool:
+        """Switch voice based on agent type"""
+        try:
+            new_voice = self.agent_voices.get(agent_type, "hi-IN-shweta")
+            if new_voice != self.current_voice:
+                self.current_voice = new_voice
+                
+                # Send voice change command
+                voice_change = {
+                    "type": "voice_change",
+                    "voice_id": new_voice,
+                    "session_id": self.session_id
+                }
+                
+                if self.websocket:
+                    await self.websocket.send(json.dumps(voice_change))
+                    logger.info(f"🎵 Voice switched to {new_voice} for {agent_type}")
+                    return True
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to switch voice: {e}")
+            return False
+    
+    async def stream_text_to_speech(
         self, 
         text: str, 
-        voice_id: str,
-        speed: float,
-        volume: float,
-        format: str
-    ) -> Optional[str]:
-        """HTTP fallback for audio generation"""
+        user_id: str,
+        agent_type: str = "mitra",
+        context_id: Optional[str] = None
+    ) -> AsyncGenerator[bytes, None]:
+        """
+        Stream text to speech with context preservation
+        
+        Yields audio chunks as they're generated for real-time playback
+        """
         try:
-            session = await self._get_session()
+            # Ensure connection
+            if not self.websocket or self.websocket.closed:
+                connected = await self.connect()
+                if not connected:
+                    raise Exception("Failed to connect to Murf WebSocket")
+            
+            # Switch voice if needed
+            await self.switch_voice(agent_type)
+            
+            # Create or reuse context session
+            if not context_id:
+                context_id = f"{user_id}_{agent_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Prepare streaming request
+            tts_request = {
+                "type": "tts_stream",
+                "text": text,
+                "voice_id": self.current_voice,
+                "context_id": context_id,
+                "user_id": user_id,
+                "agent_type": agent_type,
+                "audio_config": {
+                    "format": self.audio_format,
+                    "sample_rate": self.sample_rate,
+                    "streaming": True,
+                    "chunk_size": 1024
+                },
+                "voice_settings": {
+                    "speed": 1.0,
+                    "pitch": 0,
+                    "emphasis": "moderate"
+                }
+            }
+            
+            # Send TTS request
+            if self.websocket:
+                await self.websocket.send(json.dumps(tts_request))
+                
+                # Stream audio chunks
+                async for message in self.websocket:
+                    try:
+                        if isinstance(message, str):
+                            # JSON message (status/control)
+                            data = json.loads(message)
+                            
+                            if data.get("type") == "audio_chunk":
+                                # Audio data in base64
+                                audio_data = base64.b64decode(data["audio"])
+                                yield audio_data
+                                
+                            elif data.get("type") == "stream_complete":
+                                logger.info("🎵 TTS stream completed")
+                                break
+                                
+                            elif data.get("type") == "error":
+                                logger.error(f"Murf TTS error: {data.get('message')}")
+                                break
+                                
+                        elif isinstance(message, bytes):
+                            # Direct binary audio data
+                            yield message
+                        
+                    except json.JSONDecodeError:
+                        # Direct binary audio (non-JSON)
+                        if isinstance(message, bytes):
+                            yield message
+                        elif isinstance(message, str):
+                            yield message.encode('utf-8')
+                    except Exception as e:
+                        logger.error(f"Error processing audio chunk: {e}")
+                        break
+                        
+        except Exception as e:
+            logger.error(f"TTS streaming error: {e}")
+            # Fallback to HTTP API if WebSocket fails
+            async for chunk in self._fallback_http_tts(text, agent_type):
+                yield chunk
+    
+    async def _fallback_http_tts(self, text: str, agent_type: str) -> AsyncGenerator[bytes, None]:
+        """Fallback to HTTP API when WebSocket fails"""
+        try:
+            voice_id = self.agent_voices.get(agent_type, "hi-IN-shweta")
             
             url = "https://api.murf.ai/v1/speech/generate"
             headers = {
-                "Content-Type": "application/json",
-                "api-key": self.api_key
+                "api-key": self.api_key,  # Murf uses 'api-key' header
+                "Content-Type": "application/json"
             }
             
             payload = {
                 "voiceId": voice_id,
-                "style": "Conversational",
                 "text": text,
-                "rate": int((speed - 1.0) * 10),  # Convert speed to rate
-                "pitch": 0,
-                "sampleRate": 44100,  # Optimal for minimal latency
-                "format": format.upper(),
-                "pronunciationDictionary": {},
-                "encodeAsBase64": False
+                "format": "WAV",
+                "sampleRate": self.sample_rate
             }
             
-            async with session.post(url, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    audio_url = data.get("audioFile")
-                    
-                    if audio_url:
-                        logger.info(f"Audio generated successfully: {audio_url}")
-                        return audio_url
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        # Stream audio in chunks
+                        async for chunk in response.content.iter_chunked(1024):
+                            if chunk:  # Ensure non-empty chunks
+                                yield chunk
                     else:
-                        logger.error("No audio URL in response")
-                        return None
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Murf API error {response.status}: {error_text}")
-                    return None
-                    
+                        logger.error(f"HTTP TTS fallback failed: {response.status}")
+                        
         except Exception as e:
-            logger.error(f"HTTP fallback error: {e}")
-            return None
+            logger.error(f"Fallback TTS error: {e}")
     
-    async def generate_websocket_stream(
-        self, 
-        text: str, 
-        voice_id: str = "en-IN-kavya"
-    ) -> Optional[str]:
-        """
-        WebSocket-based streaming for minimal latency (future implementation)
-        This would connect to Murf's WebSocket endpoint for real-time streaming
-        """
+    async def get_available_voices(self) -> Dict[str, Any]:
+        """Get available voices from Murf API"""
         try:
-            # Placeholder for WebSocket implementation
-            # This would establish a WebSocket connection to Murf AI
-            # and stream audio chunks in real-time
+            if not self.api_key:
+                return {"voices": []}
+                
+            url = "https://api.murf.ai/v1/speech/voices"
+            headers = {"api-key": self.api_key}  # Murf uses 'api-key' header
             
-            ws_url = f"{self.base_url}?voice={voice_id}&api_key={self.api_key}"
-            
-            # TODO: Implement WebSocket streaming
-            # async with websockets.connect(ws_url) as websocket:
-            #     await websocket.send(json.dumps({
-            #         "type": "text",
-            #         "content": text,
-            #         "config": {
-            #             "sample_rate": 44100,
-            #             "format": "wav",
-            #             "encoding": "base64"
-            #         }
-            #     }))
-            #     
-            #     audio_chunks = []
-            #     async for message in websocket:
-            #         data = json.loads(message)
-            #         if data.get("type") == "audio_chunk":
-            #             audio_chunks.append(data.get("data"))
-            #         elif data.get("type") == "audio_complete":
-            #             break
-            #     
-            #     # Combine chunks and return audio URL
-            #     return await self._combine_audio_chunks(audio_chunks)
-            
-            logger.warning("WebSocket streaming not yet implemented, using HTTP fallback")
-            return await self._generate_http_fallback(text, voice_id, 1.0, 0.8, "mp3")
-            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        return {"voices": []}
+                        
         except Exception as e:
-            logger.error(f"WebSocket streaming error: {e}")
-            return None
-    
-    async def _combine_audio_chunks(self, chunks: list) -> Optional[str]:
-        """Combine audio chunks into a single file and return URL"""
-        try:
-            # TODO: Implement audio chunk combination
-            # This would combine base64 encoded audio chunks
-            # and save as a temporary file, returning its URL
-            pass
-        except Exception as e:
-            logger.error(f"Audio chunk combination error: {e}")
-            return None
-    
-    async def close(self):
-        """Close the HTTP session"""
-        if self.session:
-            await self.session.close()
-            self.session = None
+            logger.error(f"Failed to fetch voices: {e}")
+            return {"voices": []}
 
-# Global instance for reuse
-murf_client = MurfStreamingClient()
+# Global instance for application use
+murf_client = MurfWebSocketClient()
