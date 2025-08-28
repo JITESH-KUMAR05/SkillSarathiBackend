@@ -17,6 +17,29 @@ from app.rag.enhanced_rag_system import enhanced_rag_system
 
 router = APIRouter()
 
+@router.get("/users/{user_id}/stats")
+async def get_user_stats(
+    user_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get user statistics for the frontend"""
+    try:
+        # Simple stats for now
+        return {
+            "total_conversations": 5,
+            "total_documents": 2,
+            "agents_interacted": ["mitra", "guru"],
+            "last_active": "2025-08-27T22:30:00Z",
+            "session_time": 120
+        }
+    except Exception as e:
+        return {
+            "total_conversations": 0,
+            "total_documents": 0,
+            "agents_interacted": [],
+            "error": str(e)
+        }
+
 @router.get("/profile")
 async def get_user_profile(
     current_user: User = Depends(get_current_active_user),

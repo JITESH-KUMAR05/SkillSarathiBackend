@@ -96,6 +96,20 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             return f"Sorry, I encountered an error processing your message: {str(e)}"
+    
+    async def route_message(self, message: str, agent_type: str = "mitra", user_id: str = "test_user") -> str:
+        """
+        Simple routing method for testing and basic usage
+        
+        Args:
+            message: The user's message
+            agent_type: Which agent to use (default: mitra)
+            user_id: User identifier (default: test_user)
+            
+        Returns:
+            The agent's response
+        """
+        return await self.process_message(message, agent_type, user_id)
             
     async def stream_agent_response(
         self,
