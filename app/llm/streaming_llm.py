@@ -101,6 +101,50 @@ Be professional, encouraging, and provide actionable advice. Help candidates imp
         
         return prompts.get(agent_type, prompts["mitra"])
     
+    async def generate_response(
+        self, 
+        prompt: str, 
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 500,
+        temperature: float = 0.7
+    ) -> str:
+        """Generate a single response (non-streaming) - wrapper around stream_response"""
+        
+        try:
+            if not self.github_token:
+                return self._get_fallback_response(prompt, "mitra")
+            
+            headers = {
+                "Authorization": f"Bearer {self.github_token}",
+                "Content-Type": "application/json",
+            }
+            
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            payload = {
+                "model": "gpt-4o",
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.base_url, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        return content if content else self._get_fallback_response(prompt, "mitra")
+                    else:
+                        logger.error(f"LLM API error: {response.status}")
+                        return self._get_fallback_response(prompt, "mitra")
+                        
+        except Exception as e:
+            logger.error(f"Generate response error: {e}")
+            return self._get_fallback_response(prompt, "mitra")
+
     def _get_fallback_response(self, message: str, agent_type: str) -> str:
         """Get fallback response when LLM is unavailable"""
         

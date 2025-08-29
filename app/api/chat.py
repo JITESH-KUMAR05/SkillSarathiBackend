@@ -15,7 +15,7 @@ from app.database.schemas import (
 )
 from app.auth.dependencies import get_current_active_user
 from app.agents.base import create_agent
-from app.rag.rag_system import rag_system
+from app.rag.advanced_rag_system import get_rag_system
 from app.llm.streaming_llm import StreamingLLMService
 
 # Simple message model for frontend compatibility
@@ -179,6 +179,8 @@ async def chat_with_agent(
     # Get relevant documents using RAG
     relevant_context = ""
     try:
+        # Get RAG context
+        rag_system = get_rag_system()
         relevant_context = await rag_system.get_context_for_query(
             query=chat_message.content,
             user_id=current_user.id,

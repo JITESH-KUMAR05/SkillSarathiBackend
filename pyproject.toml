@@ -63,6 +63,13 @@ dependencies = [
     "pypdf2>=3.0.1",
     "soundfile>=0.13.1",
     "librosa>=0.11.0",
+    "streamlit-option-menu>=0.4.0",
+    "streamlit-chat>=0.1.1",
+    "streamlit-extras>=0.7.7",
+    "aiortc>=1.13.0",
+    "scipy>=1.16.1",
+    "pyjwt>=2.10.1",
+    "cryptography>=45.0.6",
 ]
 requires-python = ">= 3.11"
 

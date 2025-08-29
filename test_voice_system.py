@@ -59,14 +59,20 @@ async def discover_and_test_voices():
     indian_voices = []
     hindi_voices = []
     
+    print(f"🔍 Analyzing voice data structure...")
+    print(f"   Raw response keys: {list(voices_data.keys())}")
+    
     for voice in voices:
-        voice_id = voice.get("id", "")
-        language = voice.get("languageCode", "")
-        name = voice.get("name", "")
-        gender = voice.get("gender", "")
+        # Handle different voice object structures
+        voice_id = voice.get("id") or voice.get("voiceId") or voice.get("voice_id", "")
+        language = voice.get("languageCode") or voice.get("language") or voice.get("locale", "")
+        name = voice.get("name") or voice.get("displayName") or voice.get("voice_name", "")
+        gender = voice.get("gender") or voice.get("sex", "")
+        
+        print(f"   Voice: {voice_id} | {name} | {language} | {gender}")
         
         # Check for Indian voices
-        if language.startswith("hi") or language.startswith("en-IN"):
+        if language.startswith("hi") or language.startswith("en-IN") or "IN" in language:
             indian_voices.append({
                 "id": voice_id,
                 "name": name,

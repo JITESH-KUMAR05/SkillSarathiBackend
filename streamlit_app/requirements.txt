@@ -1,0 +1,30 @@
+# BuddyAgents Streamlit Frontend Requirements
+# Core Streamlit and Web Framework
+streamlit>=1.28.0
+streamlit-webrtc>=0.47.0
+
+# HTTP and WebSocket Communication
+requests>=2.31.0
+websockets>=11.0
+aiohttp>=3.8.0
+
+# Audio and Video Processing
+opencv-python>=4.8.0
+aiortc>=1.6.0
+
+# Data Handling and Validation
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# UI Enhancements
+streamlit-option-menu>=0.3.6
+streamlit-chat>=0.1.1
+streamlit-extras>=0.3.0
+
+# Authentication and Security
+pyjwt>=2.8.0
+cryptography>=41.0.0
+
+# Audio Processing
+numpy>=1.24.0
+scipy>=1.11.0

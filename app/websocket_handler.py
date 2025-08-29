@@ -20,7 +20,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
 from app.agent_orchestrator import AgentOrchestrator
-from app.murf_streaming import murf_client
+from app.murf_streaming_fixed import stream_text_to_speech
 from app.llm.streaming_llm import StreamingLLMService
 
 logger = logging.getLogger(__name__)
@@ -221,8 +221,7 @@ class WebSocketHandler:
             response = await self.orchestrator.route_message(
                 message=user_message,
                 agent_type=agent_type,
-                user_id=user_id,
-                context={"connection_id": connection_id}
+                user_id=user_id
             )
             
             # Send text response
@@ -390,11 +389,10 @@ class WebSocketHandler:
             await manager.send_personal_message(json.dumps(audio_start_msg), connection_id)
             
             # Stream audio chunks
-            async for audio_chunk in murf_client.stream_text_to_speech(
+            async for audio_chunk in stream_text_to_speech(
                 text=text,
-                user_id=user_id,
                 agent_type=agent_type,
-                context_id=audio_session_id
+                user_id=user_id
             ):
                 await manager.send_audio_chunk(audio_chunk, connection_id)
             

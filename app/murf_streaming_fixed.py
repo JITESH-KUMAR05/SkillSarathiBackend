@@ -16,6 +16,9 @@ import aiohttp
 from datetime import datetime
 import os
 
+# Import voice configuration
+from app.voice_config import AGENT_VOICE_CONFIG, get_agent_voice, get_voice_info
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,14 +36,13 @@ class MurfAIClient:
         # Note: WebSocket streaming may not be available in Murf API
         # Using HTTP API with chunked streaming for real-time feel
         
-        # Working Indian voice IDs (verified with Murf)
+        # Use verified working voice IDs from voice configuration
         self.agent_voices = {
-            "mitra": "hi-IN-shweta",      # Hindi female - warm, caring
-            "guru": "en-IN-eashwar",      # English-Indian male - professional  
-            "parikshak": "en-IN-isha"     # English-Indian female - clear
+            agent: config["primary"] 
+            for agent, config in AGENT_VOICE_CONFIG.items()
         }
         
-        self.current_voice = "hi-IN-shweta"
+        self.current_voice = get_agent_voice("mitra")
         self.session_id = str(uuid.uuid4())
         
     async def get_available_voices(self) -> Dict[str, Any]:
@@ -59,8 +61,23 @@ class MurfAIClient:
                 async with session.get(self.voices_url, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
-                        logger.info(f"✅ Fetched {len(data.get('voices', []))} voices from Murf")
-                        return data
+                        
+                        # Handle different API response formats
+                        if isinstance(data, list):
+                            # Direct list of voices
+                            voices = data
+                        elif isinstance(data, dict) and "voices" in data:
+                            # Wrapped in voices key
+                            voices = data["voices"]
+                        elif isinstance(data, dict) and "data" in data:
+                            # Wrapped in data key
+                            voices = data["data"]
+                        else:
+                            # Fallback - assume the data itself contains voice info
+                            voices = [data] if isinstance(data, dict) else []
+                        
+                        logger.info(f"✅ Fetched {len(voices)} voices from Murf")
+                        return {"voices": voices, "raw_response": data}
                     else:
                         error_text = await response.text()
                         logger.error(f"❌ Failed to fetch voices: {response.status} - {error_text}")
@@ -121,7 +138,8 @@ class MurfAIClient:
                 logger.error("❌ No Murf API key configured")
                 return
                 
-            voice_id = self.agent_voices.get(agent_type, "hi-IN-shweta")
+            voice_id = get_agent_voice(agent_type)
+            voice_info = get_voice_info(voice_id)
             
             headers = {
                 "api-key": self.api_key,
@@ -140,7 +158,7 @@ class MurfAIClient:
                 }
             }
             
-            logger.info(f"🎵 Synthesizing with voice {voice_id} for agent {agent_type}")
+            logger.info(f"🎵 Synthesizing with {voice_info['name']} ({voice_id}) for agent {agent_type}")
             
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -165,10 +183,11 @@ class MurfAIClient:
     async def switch_voice(self, agent_type: str) -> bool:
         """Switch voice for different agent types"""
         try:
-            new_voice = self.agent_voices.get(agent_type, "hi-IN-shweta")
+            new_voice = get_agent_voice(agent_type)
             if new_voice != self.current_voice:
                 self.current_voice = new_voice
-                logger.info(f"🎵 Voice switched to {new_voice} for agent {agent_type}")
+                voice_info = get_voice_info(new_voice)
+                logger.info(f"🎵 Voice switched to {voice_info['name']} ({new_voice}) for agent {agent_type}")
             return True
         except Exception as e:
             logger.error(f"❌ Failed to switch voice: {e}")
