@@ -17,7 +17,7 @@ from app.database.base import get_db
 from app.database.models import Document as DocumentModel, User
 from app.database.schemas import Document, DocumentCreate, DocumentUpdate
 from app.auth.dependencies import get_current_active_user
-from app.rag.rag_system import rag_system
+from app.rag.enhanced_rag_system import get_rag_system
 from app.rag.enhanced_rag_system import enhanced_rag_system
 
 router = APIRouter()

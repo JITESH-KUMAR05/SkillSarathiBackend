@@ -15,7 +15,7 @@ from app.database.schemas import (
 )
 from app.auth.dependencies import get_current_active_user
 from app.agents.base import create_agent
-from app.rag.rag_system import rag_system
+from app.rag.advanced_rag_system import get_rag_system
 from app.llm.streaming_llm import StreamingLLMService
 
 # Simple message model for frontend compatibility
@@ -32,8 +32,8 @@ class SimpleResponse(BaseModel):
 router = APIRouter()
 
 # Simple message endpoint for frontend compatibility
-@router.post("/message", response_model=SimpleResponse)
-async def send_message(message_data: SimpleMessage):
+@router.post("/send", response_model=SimpleResponse)
+async def send_message_simple(message_data: SimpleMessage):
     """Simple message endpoint for frontend compatibility"""
     
     try:
@@ -54,14 +54,14 @@ async def send_message(message_data: SimpleMessage):
         )
         
     except Exception as e:
-        # Fallback response
-        agent_names = {"mitra": "Mitra", "guru": "Guru", "parikshak": "Parikshak"}
-        agent_name = agent_names.get(message_data.agent_type, "Mitra")
+        # Fallback response with actual agent personality
+        agent_responses = {
+            "mitra": f"नमस्ते! मैं मित्र हूँ। आपने कहा: '{message_data.message}' - मैं आपकी कैसे मदद कर सकता हूँ?",
+            "guru": f"Greetings! I'm Guru, your learning mentor. Regarding your question '{message_data.message}', let me provide you with detailed guidance.",
+            "parikshak": f"Hello! I'm Parikshak, your interview coach. You mentioned: '{message_data.message}'. Let me help you prepare for success!"
+        }
         
-        if "factorial" in message_data.message.lower():
-            response = f"Here's a Python function to calculate factorial:\n\n```python\ndef factorial(n):\n    if n == 0 or n == 1:\n        return 1\n    else:\n        return n * factorial(n - 1)\n\n# Using loop method:\ndef factorial_loop(n):\n    result = 1\n    for i in range(1, n + 1):\n        result *= i\n    return result\n\n# Example usage:\nprint(factorial(5))  # Output: 120\nprint(factorial_loop(5))  # Output: 120\n```\n\nBoth methods work! The first uses recursion, the second uses a loop. Which approach would you like to explore further?"
-        else:
-            response = f"Hello! I'm {agent_name}, and I'm here to help you. You said: '{message_data.message}'. How can I assist you today?"
+        response = agent_responses.get(message_data.agent_type, f"Hello! I'm here to help with: '{message_data.message}'")
         
         from datetime import datetime
         return SimpleResponse(
@@ -179,6 +179,8 @@ async def chat_with_agent(
     # Get relevant documents using RAG
     relevant_context = ""
     try:
+        # Get RAG context
+        rag_system = get_rag_system()
         relevant_context = await rag_system.get_context_for_query(
             query=chat_message.content,
             user_id=current_user.id,
