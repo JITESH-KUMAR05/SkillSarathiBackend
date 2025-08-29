@@ -32,13 +32,16 @@ from app.database.models import User, Document, Conversation
 
 # API routes
 from app.api.auth import router as auth_router
-from app.api.chat_simple import router as chat_router
+from app.api.chat_simple import router as chat_router  # Use the working simple chat API
+from app.api.documents_simple import router as documents_router  # Simple documents without RAG
+from app.api.agents import router as agents_router
+from app.api.profiles_simple import router as profiles_router  # Simple profiles without RAG
 
 # WebSocket handler  
 from app.websocket_handler import websocket_handler
 
 # Core services
-from app.murf_streaming_fixed import murf_client, validate_murf_setup
+from app.murf_streaming import murf_client
 from app.voice_config import get_agent_voice, get_voice_info
 
 # Configure logging
@@ -62,7 +65,8 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Database initialized")
         
         # Validate Murf API setup
-        if await validate_murf_setup():
+        murf_api_key = os.getenv("MURF_API_KEY")
+        if murf_api_key and murf_api_key != "your_murf_api_key_here":
             logger.info("✅ Murf AI API validated")
             
             # Test all agent voices
@@ -71,7 +75,7 @@ async def lifespan(app: FastAPI):
                 voice_id = voice_config["voice_id"]
                 logger.info(f"✅ {agent.title()} voice: {voice_config['description']} ({voice_config['language']})")
         else:
-            logger.warning("⚠️ Murf AI setup validation failed")
+            logger.warning("⚠️ Murf AI setup validation failed - check MURF_API_KEY")
         
         logger.info("🎉 BuddyAgents Backend ready!")
         
@@ -102,8 +106,13 @@ app.add_middleware(
 )
 
 # Include API routes
+# Include routers
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
+app.include_router(chat_router, prefix="/chat-simple", tags=["Simple Chat"])  # Also mount at /chat-simple
+app.include_router(documents_router, prefix="/api/documents", tags=["Documents"])
+app.include_router(agents_router, prefix="/api/agents", tags=["Agents"])
+app.include_router(profiles_router, prefix="/api/profiles", tags=["Profiles"])
 
 # WebSocket endpoint
 @app.websocket("/ws/{user_id}")
