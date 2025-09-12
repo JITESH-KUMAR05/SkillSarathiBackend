@@ -1,5 +1,5 @@
 """
-Fixed LLM Factory for Skillsarathi AI - Working Real AI Integration
+Production LLM Factory for BuddyAgents - Azure OpenAI Primary with GitHub Fallback
 """
 
 import logging
@@ -9,6 +9,14 @@ from langchain.schema import ChatGeneration, LLMResult, AIMessage, HumanMessage,
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+# Import Azure OpenAI service
+try:
+    from .azure_openai_service import azure_openai_service
+    AZURE_AVAILABLE = True
+except ImportError:
+    AZURE_AVAILABLE = False
+    logger.warning("Azure OpenAI service not available")
 
 class WorkingGitHubLLM:
     """Working GitHub Models API LLM implementation"""

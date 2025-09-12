@@ -16,7 +16,7 @@ import logging
 # Import voice and agent systems
 from app.murf_streaming import murf_client
 from app.voice_config import get_agent_voice, get_voice_info
-from app.llm.streaming_llm import StreamingLLMService
+from app.llm.azure_openai_service import azure_openai_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -43,8 +43,8 @@ class AgentInfo(BaseModel):
     description: str
     language: str
 
-# Initialize LLM service
-llm_service = StreamingLLMService()
+# Initialize Azure OpenAI service
+# No initialization needed - using global instance
 
 # Agent configurations
 AGENT_CONFIGS = {
@@ -90,23 +90,25 @@ async def send_chat_message(message_data: ChatMessage, background_tasks: Backgro
         
         logger.info(f"💬 Chat request: {message_data.agent_type} from user {message_data.user_id}")
         
-        # Generate response using LLM
-        system_prompt = agent_config["system_prompt"]
-        user_message = f"User: {message_data.message}"
+        # Generate response using Azure OpenAI
+        messages = [{"role": "user", "content": message_data.message}]
         
         try:
-            # Get response from LLM service
-            response_text = await llm_service.generate_response(
-                prompt=user_message,
-                system_prompt=system_prompt,
+            # Get response from Azure OpenAI service
+            response_text = ""
+            async for chunk in azure_openai_service.generate_response(
+                messages=messages,
+                agent_type=message_data.agent_type,
+                stream=False,  # Non-streaming for simple endpoint
                 max_tokens=500
-            )
+            ):
+                response_text += chunk
             
             if not response_text:
                 response_text = f"Hello! I'm {agent_config['name']} and I'm here to help you."
                 
         except Exception as e:
-            logger.error(f"LLM service error: {e}")
+            logger.error(f"Azure OpenAI service error: {e}")
             # Fallback response
             response_text = f"Hello! I'm {agent_config['name']}. {agent_config['description']} How can I help you today?"
         
