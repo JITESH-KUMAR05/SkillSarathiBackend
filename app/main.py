@@ -36,6 +36,7 @@ from app.api.chat_simple import router as chat_router  # Use the working simple 
 from app.api.documents_simple import router as documents_router  # Simple documents without RAG
 from app.api.agents import router as agents_router
 from app.api.profiles_simple import router as profiles_router  # Simple profiles without RAG
+from app.api.ai_features import router as ai_features_router  # Advanced AI capabilities
 
 # WebSocket handler  
 from app.websocket_handler import websocket_handler
@@ -113,6 +114,7 @@ app.include_router(chat_router, prefix="/chat-simple", tags=["Simple Chat"])  # 
 app.include_router(documents_router, prefix="/api/documents", tags=["Documents"])
 app.include_router(agents_router, prefix="/api/agents", tags=["Agents"])
 app.include_router(profiles_router, prefix="/api/profiles", tags=["Profiles"])
+app.include_router(ai_features_router, tags=["Advanced AI Features"])  # Model Router, Sora, Transcription
 
 # WebSocket endpoint
 @app.websocket("/ws/{user_id}")
