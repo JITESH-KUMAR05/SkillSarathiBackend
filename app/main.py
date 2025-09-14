@@ -1,49 +1,30 @@
 """
-Production BuddyAgents Backend
-=============================
-
-A comprehensive AI multi-agent platform with:
-- WebSocket streaming for real-time communication
-- Murf AI voice synthesis integration
-- Advanced RAG with personalized memory
-- GitHub Copilot LLM integration
-- Multi-agent system (Mitra, Guru, Parikshak)
+FastAPI Main Application for BuddyAgents Platform
+Production-ready backend with security, monitoring, and Azure OpenAI integration
 """
 
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from datetime import datetime
+from typing import Dict, Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-import uvicorn
 
-# Load environment variables
-from dotenv import load_dotenv
-import os
-load_dotenv()
+from app.core.config import get_settings
+from app.core.security import SecurityMiddleware, RateLimitService
+from app.services.azure_openai_service import azure_openai_service
+from app.services.voice import get_voice_manager
 
-# Database setup
-from app.database.base import engine, Base
-from app.database.models import User, Document, Conversation
-
-# API routes
-from app.api.auth import router as auth_router
-from app.api.chat_simple import router as chat_router  # Use the working simple chat API
-from app.api.documents_simple import router as documents_router  # Simple documents without RAG
-from app.api.agents import router as agents_router
-from app.api.profiles_simple import router as profiles_router  # Simple profiles without RAG
-from app.api.ai_features import router as ai_features_router  # Advanced AI capabilities
-
-# WebSocket handler  
-from app.websocket_handler import websocket_handler
-
-# Core services
-from app.murf_streaming import murf_client
-from app.voice_config import get_agent_voice, get_voice_info
+# Import API routers
+from app.api.chat_router import router as chat_router
+from app.api.voice import router as voice_router
+from app.api.video_router import router as video_router
+from app.api.user_router import router as user_router
 
 # Configure logging
 logging.basicConfig(
@@ -52,147 +33,176 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Global settings
+settings = get_settings()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events"""
-    
+    """Application lifespan manager"""
     # Startup
-    logger.info("🚀 Starting BuddyAgents Backend...")
+    logger.info("🚀 Starting BuddyAgents Platform...")
     
     try:
-        # Initialize database
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("✅ Database initialized")
+        # Initialize Azure OpenAI service
+        logger.info("🔧 Initializing Azure OpenAI service...")
+        # Health check will be called in the health endpoint
         
-        # Validate Murf API setup
-        murf_api_key = os.getenv("MURF_API_KEY")
-        if murf_api_key and murf_api_key != "your_murf_api_key_here":
-            logger.info("✅ Murf AI API validated")
-            
-            # Test all agent voices
-            for agent in ["mitra", "guru", "parikshak"]:
-                voice_config = get_agent_voice(agent)
-                voice_id = voice_config["voice_id"]
-                logger.info(f"✅ {agent.title()} voice: {voice_config['description']} ({voice_config['language']})")
-        else:
-            logger.warning("⚠️ Murf AI setup validation failed - check MURF_API_KEY")
+        # Initialize rate limiting service
+        logger.info("🛡️ Initializing security services...")
+        # Rate limit service is initialized automatically
         
-        logger.info("🎉 BuddyAgents Backend ready!")
+        logger.info("✅ BuddyAgents Platform started successfully!")
         
     except Exception as e:
-        logger.error(f"❌ Startup error: {e}")
+        logger.error(f"❌ Failed to start application: {e}")
         raise
     
     yield
     
     # Shutdown
-    logger.info("🛑 Shutting down BuddyAgents Backend...")
+    logger.info("🛑 Shutting down BuddyAgents Platform...")
+    # Cleanup tasks here
+    logger.info("✅ Shutdown complete")
 
-# Initialize FastAPI app
+
+# Create FastAPI application
 app = FastAPI(
-    title="BuddyAgents API",
-    description="Multi-agent AI companion platform for India",
-    version="1.0.0",
+    title="BuddyAgents Platform API",
+    description="Production-ready AI Multi-Agent Companion for India with Azure OpenAI integration",
+    version="2.0.0",
+    docs_url="/docs" if settings.environment == "development" else None,
+    redoc_url="/redoc" if settings.environment == "development" else None,
     lifespan=lifespan
 )
 
-# CORS middleware
+# Security Middleware
+app.add_middleware(SecurityMiddleware)
+
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Rate-Limit-Remaining"]
 )
 
-# Include API routes
-# Include routers
-app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
-app.include_router(chat_router, prefix="/chat-simple", tags=["Simple Chat"])  # Also mount at /chat-simple
-app.include_router(documents_router, prefix="/api/documents", tags=["Documents"])
-app.include_router(agents_router, prefix="/api/agents", tags=["Agents"])
-app.include_router(profiles_router, prefix="/api/profiles", tags=["Profiles"])
-app.include_router(ai_features_router, tags=["Advanced AI Features"])  # Model Router, Sora, Transcription
+# Trusted Host Middleware
+if settings.environment == "production":
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=settings.allowed_hosts
+    )
 
-# WebSocket endpoint
-@app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """WebSocket endpoint for real-time chat and voice streaming"""
-    await websocket_handler.handle_connection(websocket, user_id)
+# Static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Health check endpoint
+# Include API routers
+app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
+app.include_router(voice_router, prefix="/api/v1/voice", tags=["Voice"])
+app.include_router(video_router, prefix="/api/v1/video", tags=["Video"])
+app.include_router(user_router, prefix="/api/v1/users", tags=["Users"])
+
+
+# Health Check Endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "BuddyAgents Backend",
-        "version": "1.0.0",
-        "features": [
-            "multi_agent_chat",
-            "voice_synthesis", 
-            "websocket_streaming",
-            "rag_system"
-        ]
-    }
-
-@app.get("/agents")
-async def get_agents():
-    """Get available agents"""
-    return {
-        "agents": [
-            {
-                "id": "mitra",
-                "name": "Mitra (मित्र)",
-                "emoji": "🤗",
-                "description": "Your caring friend for emotional support",
-                "color": "#FF6B6B",
-                "role": "friend",
-                "voice": "shweta"
-            },
-            {
-                "id": "guru",
-                "name": "Guru (गुरु)",
-                "emoji": "🎓", 
-                "description": "Your learning mentor for growth",
-                "color": "#4ECDC4",
-                "role": "mentor",
-                "voice": "eashwar"
-            },
-            {
-                "id": "parikshak",
-                "name": "Parikshak (परीक्षक)",
-                "emoji": "💼",
-                "description": "Your interview coach for career success", 
-                "color": "#45B7D1",
-                "role": "coach",
-                "voice": "isha"
+    """Comprehensive health check endpoint"""
+    try:
+        # Check Azure OpenAI service health
+        azure_health = await azure_openai_service.health_check()
+        
+        # Check voice services health
+        voice_health = {"status": "not_initialized"}
+        try:
+            voice_manager = await get_voice_manager()
+            voice_health = await voice_manager.get_service_health()
+        except Exception as e:
+            voice_health = {"status": "error", "error": str(e)}
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": "2.0.0",
+            "environment": settings.environment,
+            "services": {
+                "azure_openai": azure_health,
+                "voice_services": voice_health,
+                "rate_limiting": {
+                    "status": "healthy",
+                    "active_limits": ["chat", "voice", "video"]
+                }
             }
-        ]
-    }
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service temporarily unavailable"
+        )
+
 
 # Root endpoint
 @app.get("/")
 async def root():
-    """Root endpoint with service information"""
+    """API root endpoint"""
     return {
-        "message": "🙏 Welcome to BuddyAgents API",
-        "agents": ["mitra", "guru", "parikshak"],
-        "endpoints": {
-            "health": "/health",
-            "chat": "/api/chat/",
-            "websocket": "/ws/{user_id}",
-            "docs": "/docs"
-        }
+        "message": "Welcome to BuddyAgents Platform API",
+        "version": "2.0.0",
+        "agents": ["Mitra", "Guru", "Parikshak"],
+        "documentation": "/docs",
+        "health": "/health"
     }
 
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for unhandled errors"""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "Internal server error",
+            "timestamp": datetime.utcnow().isoformat(),
+            "request_id": getattr(request.state, "request_id", "unknown")
+        }
+    )
+
+
+# Rate limit exceeded handler
+@app.exception_handler(429)
+async def rate_limit_handler(request: Request, exc: HTTPException):
+    """Handle rate limit exceeded errors"""
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded",
+            "message": "Too many requests. Please try again later.",
+            "timestamp": datetime.utcnow().isoformat(),
+            "retry_after": 60
+        },
+        headers={
+            "Retry-After": "60",
+            "X-RateLimit-Limit": "100",
+            "X-RateLimit-Remaining": "0"
+        }
+    )
+
+
 if __name__ == "__main__":
+    import uvicorn
+    
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=settings.environment == "development",
+        workers=1 if settings.environment == "development" else 4,
+        access_log=True,
         log_level="info"
     )

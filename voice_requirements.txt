@@ -1,0 +1,29 @@
+# Voice Services Dependencies
+# Add these to your main requirements.txt file
+
+# Audio processing
+pydub>=0.25.1  # Audio manipulation and optimization
+librosa>=0.10.0  # Advanced audio processing (optional)
+
+# Speech services
+azure-cognitiveservices-speech>=1.33.0  # Azure Speech Services
+google-cloud-speech>=2.20.0  # Google Cloud Speech-to-Text
+
+# Audio format support
+soundfile>=0.12.1  # Audio file I/O
+ffmpeg-python>=0.2.0  # FFmpeg wrapper for audio conversion
+
+# Caching and performance
+aioredis>=2.0.1  # Async Redis client for caching
+aiohttpcache>=0.1.0  # HTTP caching for API calls
+
+# Voice processing
+speechrecognition>=3.10.0  # Basic speech recognition
+pyttsx3>=2.90  # Text-to-speech (fallback)
+
+# Optional: Advanced audio processing
+# numpy>=1.24.0  # Already in main requirements
+# scipy>=1.10.0  # Scientific computing for audio
+
+# Optional: Audio codecs
+# pyaudio>=0.2.11  # Real-time audio I/O (requires system dependencies)
