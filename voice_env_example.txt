@@ -1,0 +1,38 @@
+# Voice Services Environment Variables
+# Add these to your .env file
+
+# Murf AI Configuration
+MURF_AI_API_KEY=your_murf_ai_api_key_here
+MURF_BASE_URL=https://api.murf.ai/v1
+
+# Azure Speech Services
+AZURE_SPEECH_KEY=your_azure_speech_key_here
+AZURE_SPEECH_REGION=eastus
+
+# Google Cloud Speech (optional)
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/google-credentials.json
+
+# Redis Configuration for Voice Caching
+REDIS_URL=redis://localhost:6379/0
+
+# Voice Service Settings
+DEFAULT_VOICE_LANGUAGE=hi-IN
+DEFAULT_AUDIO_QUALITY=good  # low, good, high, premium
+VOICE_CACHE_ENABLED=true
+VOICE_STREAMING_ENABLED=true
+
+# Performance Settings
+MAX_VOICE_REQUESTS=10
+VOICE_REQUEST_TIMEOUT=30
+VOICE_CACHE_TTL_HOURS=24
+
+# Audio Processing
+AUDIO_CHUNK_SIZE=8192
+STREAM_CHUNK_DURATION_MS=500
+
+# WebSocket Settings
+VOICE_WS_MAX_CONNECTIONS=100
+VOICE_WS_HEARTBEAT_INTERVAL=30
+
+# Logging
+VOICE_LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR
