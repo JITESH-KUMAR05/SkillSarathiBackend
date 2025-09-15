@@ -8,11 +8,11 @@ and caching for minimal latency.
 import os
 import asyncio
 import hashlib
-import base64
 from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from pydantic import BaseModel
 from fastapi import HTTPException
 import httpx
+import base64
 
 if TYPE_CHECKING:
     from .voice_cache import VoiceCache
@@ -46,84 +46,82 @@ class MurfVoice(BaseModel):
     description: str
     sample_url: Optional[str] = None
 
-# Available Murf AI Indian and Hindi Voices (REAL working voice IDs from API)
+# Available Murf AI Indian Voices (using proper Murf voice IDs)
 MURF_INDIAN_VOICES = {
-    # Native Hindi Voices (best for Hindi conversations)
-    "hi-IN-shweta": MurfVoice(
-        id="hi-IN-shweta",
-        name="Shweta", 
+    # Hindi Voices
+    "hi-IN-aditi": MurfVoice(
+        id="hi-IN-aditi",
+        name="Aditi", 
         language="Hindi",
         gender="Female",
         age="Young Adult",
-        accent="India",
-        description="Native Hindi voice with multiple styles - perfect for natural conversations"
+        accent="Indian",
+        description="Warm, friendly Hindi voice perfect for Mitra agent"
     ),
-    "hi-IN-rahul": MurfVoice(
-        id="hi-IN-rahul",
-        name="Rahul",
-        language="Hindi",
-        gender="Male", 
-        age="Young Adult",
-        accent="India",
-        description="Native Hindi male voice - clear and professional"
-    ),
-    "hi-IN-amit": MurfVoice(
-        id="hi-IN-amit",
-        name="Amit",
-        language="Hindi",
+    "hi-IN-kabir": MurfVoice(
+        id="hi-IN-kabir",
+        name="Kabir",
+        language="Hindi", 
         gender="Male",
         age="Young Adult",
-        accent="India",
-        description="Native Hindi voice - conversational and friendly"
+        accent="Indian",
+        description="Professional, clear Hindi voice ideal for Guru agent"
     ),
-    
-    # Indian-English Voices (excellent for mixed Hindi-English content)
-    "en-IN-isha": MurfVoice(
-        id="en-IN-isha",
-        name="Isha", 
-        language="English",
-        gender="Female",
-        age="Young Adult",
-        accent="India",
-        description="Professional Indian-English voice with Hindi support"
-    ),
-    "en-IN-arohi": MurfVoice(
-        id="en-IN-arohi",
-        name="Arohi",
-        language="English",
+    "hi-IN-radhika": MurfVoice(
+        id="hi-IN-radhika",
+        name="Radhika",
+        language="Hindi",
         gender="Female", 
         age="Young Adult",
-        accent="India",
-        description="Warm Indian-English voice - great for friendly conversations"
+        accent="Indian",
+        description="Authoritative Hindi voice suitable for Parikshak agent"
     ),
     
-    # Bengali-India Voice (with excellent Hindi support)
-    "bn-IN-anwesha": MurfVoice(
-        id="bn-IN-anwesha",
-        name="Anwesha",
-        language="Bengali",
+    # English-India Voices
+    "en-IN-alisha": MurfVoice(
+        id="en-IN-alisha",
+        name="Alisha",
+        language="English-India",
+        gender="Female",
+        age="Young Adult", 
+        accent="Indian English",
+        description="Natural Indian English for professional conversations"
+    ),
+    "en-IN-arnav": MurfVoice(
+        id="en-IN-arnav", 
+        name="Arnav",
+        language="English-India",
+        gender="Male",
+        age="Young Adult",
+        accent="Indian English",
+        description="Clear, confident Indian English voice"
+    ),
+    "en-IN-priya": MurfVoice(
+        id="en-IN-priya",
+        name="Priya", 
+        language="English-India",
         gender="Female",
         age="Young Adult",
-        accent="India",
-        description="Bengali-India voice with excellent Hindi conversational support"
-    ),
+        accent="Indian English", 
+        description="Friendly, approachable Indian English voice"
+    )
 }
 
-# Agent-specific voice mappings with real Hindi voices
+# Agent-specific voice mappings with proper Murf voice IDs
 AGENT_VOICE_MAPPING = {
     "mitra": {
-        "primary": "hi-IN-shweta",  # Native Hindi female voice with multiple styles
-        "alternatives": ["en-IN-isha", "bn-IN-anwesha"],
+        "primary": "hi-IN-aditi",
+        "alternatives": ["en-IN-priya", "hi-IN-radhika"],
         "tone": "warm"
     },
     "guru": {
-        "primary": "hi-IN-rahul",  # Native Hindi male voice for educational content
-        "alternatives": ["hi-IN-amit", "en-IN-isha"],
+        "primary": "en-IN-arnav", 
+        "alternatives": ["hi-IN-kabir", "en-IN-alisha"],
         "tone": "educational"
     },
     "parikshak": {
-        "primary": "hi-IN-amit",  # Native Hindi male voice for professional assessment
-        "alternatives": ["hi-IN-rahul", "en-IN-isha"], 
+        "primary": "en-IN-alisha",
+        "alternatives": ["en-IN-arnav", "hi-IN-kabir"], 
         "tone": "professional"
     }
 }
@@ -136,12 +134,10 @@ class MurfVoiceService:
     def __init__(
         self, 
         api_key: Optional[str] = None,
-        voice_cache: Optional['VoiceCache'] = None,
-        auto_voice_enabled: bool = False
+        voice_cache: Optional['VoiceCache'] = None
     ):
         self.api_key = api_key or os.getenv("MURF_API_KEY")
         self.voice_cache = voice_cache
-        self.auto_voice_enabled = auto_voice_enabled  # Auto-voice setting
         
         if not self.api_key:
             logger.warning("MURF_API_KEY not found. Voice generation will be disabled.")
@@ -149,101 +145,36 @@ class MurfVoiceService:
         else:
             self.client = Murf(api_key=self.api_key)
             
-        self.default_config = VoiceConfig(voice_id="hi-IN-shweta")  # Default to real Hindi female voice
-    
-    def set_auto_voice(self, enabled: bool):
-        """Enable or disable auto-voice for all responses"""
-        self.auto_voice_enabled = enabled
-        logger.info(f"Auto-voice {'enabled' if enabled else 'disabled'}")
-    
-    def is_auto_voice_enabled(self) -> bool:
-        """Check if auto-voice is enabled"""
-        return self.auto_voice_enabled
+        self.default_config = VoiceConfig(voice_id="hi-IN-aditi")
         
     def _generate_cache_key(self, text: str, config: VoiceConfig) -> str:
         """Generate cache key for speech generation"""
         content = f"{text}:{config.voice_id}:{config.speed}:{config.pitch}:{config.emphasis}"
         return hashlib.md5(content.encode()).hexdigest()
     
-    async def get_available_voices_direct_api(self) -> List[Dict[str, Any]]:
+    async def get_available_voices(self) -> List[Dict[str, Any]]:
         """
-        Get list of available Murf voices using direct API call
-        (Based on working implementation from reference repositories)
+        Get list of available Murf voices
         
         Returns:
             List of voice objects with metadata
         """
-        if not self.api_key:
+        if not self.client:
             raise HTTPException(status_code=503, detail="Voice service not configured")
             
         try:
-            async with httpx.AsyncClient() as client:
-                headers = {
-                    'api-key': self.api_key,
-                }
-                
-                logger.info("Fetching voices from Murf API...")
-                response = await client.get(
-                    'https://api.murf.ai/v1/speech/voices',
-                    headers=headers,
-                    timeout=30.0
-                )
-                
-                logger.info(f"Voices API Response Status: {response.status_code}")
-                
-                if response.status_code != 200:
-                    error_text = response.text
-                    logger.error(f"Voices API Error: {error_text}")
-                    raise HTTPException(
-                        status_code=response.status_code,
-                        detail=f"Failed to fetch voices: {response.status_code} {response.reason_phrase}"
-                    )
-                
-                data = response.json()
-                logger.info(f"Successfully fetched {len(data.get('voices', []))} voices")
-                
-                return data.get('voices', [])
-                
-        except httpx.TimeoutException:
-            logger.error("Timeout fetching voices from Murf API")
-            raise HTTPException(status_code=504, detail="Timeout fetching voices")
+            # Run in thread pool since Murf SDK is synchronous
+            loop = asyncio.get_event_loop()
+            voices = await loop.run_in_executor(None, self.client.text_to_speech.get_voices)
+            return voices
         except Exception as e:
             logger.error(f"Error fetching voices: {e}")
             raise HTTPException(status_code=500, detail="Failed to fetch available voices")
     
-    async def get_available_voices(self) -> List[Dict[str, Any]]:
-        """
-        Get list of available Murf voices (fallback to predefined if API fails)
-        
-        Returns:
-            List of voice objects with metadata
-        """
-        try:
-            # Try direct API first
-            return await self.get_available_voices_direct_api()
-        except Exception as e:
-            logger.warning(f"Failed to fetch voices from API: {e}, falling back to predefined voices")
-            
-            # Fallback to predefined Indian/Hindi voices
-            voices_list = []
-            for voice_id, voice_obj in MURF_INDIAN_VOICES.items():
-                voices_list.append({
-                    "id": voice_obj.id,
-                    "name": voice_obj.name,
-                    "language": voice_obj.language,
-                    "gender": voice_obj.gender,
-                    "accent": voice_obj.accent,
-                    "description": voice_obj.description,
-                    "locale": f"{voice_obj.language}-{voice_obj.accent}",
-                    "available_styles": ["Conversational", "Professional"]
-                })
-            
-            return voices_list
-    
     async def generate_speech(
         self, 
         text: str, 
-        voice_id: str = "hi-IN-shweta",  # Default to real Hindi voice
+        voice_id: str = "hi-IN-aditi",
         speed: float = 1.0,
         pitch: float = 1.0, 
         emphasis: str = "normal",
@@ -291,8 +222,7 @@ class MurfVoiceService:
                 logger.info(f"Retrieved cached speech for voice {voice_id}")
                 if isinstance(cached_audio, dict) and "audio_data" in cached_audio:
                     return cached_audio["audio_data"]
-                elif isinstance(cached_audio, (bytes, str)):
-                    return cached_audio
+                return cached_audio
 
         try:
             # Prepare Murf API request parameters
@@ -313,22 +243,19 @@ class MurfVoiceService:
             
             # Run generation in thread pool since Murf SDK is synchronous
             loop = asyncio.get_event_loop()
-            
-            def _generate():
-                if not self.client:
-                    raise HTTPException(status_code=503, detail="Voice service not configured")
-                return self.client.text_to_speech.generate(**generation_params)
-                
-            response = await loop.run_in_executor(None, _generate)
+            response = await loop.run_in_executor(
+                None, 
+                lambda: self.client.text_to_speech.generate(**generation_params)
+            )
             
             if encode_as_base64:
                 audio_data = response.encoded_audio
                 if not audio_data:
                     raise HTTPException(status_code=500, detail="No audio data received from Murf")
                 
-                # Cache successful generation (store as base64 string)
+                # Cache successful generation
                 if self.voice_cache:
-                    await self.voice_cache.cache_generated_speech(text, voice_id, base64.b64decode(audio_data))
+                    await self.voice_cache.cache_generated_speech(text, voice_id, audio_data)
                 
                 logger.info(f"Successfully generated speech: base64 length={len(audio_data)}")
                 return audio_data
@@ -361,7 +288,7 @@ class MurfVoiceService:
     async def generate_speech_with_ssml(
         self, 
         ssml: str, 
-        voice_id: str = "en-IN-isha",
+        voice_id: str = "hi-IN-aditi",
         format: str = "mp3",
         encode_as_base64: bool = True
     ) -> Union[bytes, str]:
@@ -392,13 +319,10 @@ class MurfVoiceService:
             
             # Run generation in thread pool since Murf SDK is synchronous
             loop = asyncio.get_event_loop()
-            
-            def _generate_ssml():
-                if not self.client:
-                    raise HTTPException(status_code=503, detail="Voice service not configured")
-                return self.client.text_to_speech.generate(**generation_params)
-                
-            response = await loop.run_in_executor(None, _generate_ssml)
+            response = await loop.run_in_executor(
+                None, 
+                lambda: self.client.text_to_speech.generate(**generation_params)
+            )
             
             if encode_as_base64:
                 audio_data = response.encoded_audio
@@ -422,6 +346,41 @@ class MurfVoiceService:
         except Exception as e:
             logger.error(f"Unexpected error in SSML speech generation: {e}")
             raise HTTPException(status_code=500, detail=f"Internal voice service error: {str(e)}")
+            
+            async with self.session.post(
+                f"{self.base_url}/speech/ssml",
+                json=payload
+            ) as response:
+                
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise HTTPException(
+                        status_code=response.status,
+                        detail=f"SSML speech generation failed: {error_text}"
+                    )
+                
+                return await response.read()
+                
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error in SSML speech generation: {e}")
+            raise HTTPException(status_code=503, detail="Voice service temporarily unavailable")
+    
+    async def get_available_voices(self, language: Optional[str] = None) -> List[MurfVoice]:
+        """
+        Get available Indian voices from Murf AI
+        
+        Args:
+            language: Filter by language (Hindi, English-India)
+            
+        Returns:
+            List of available voices
+        """
+        voices = list(MURF_INDIAN_VOICES.values())
+        
+        if language:
+            voices = [v for v in voices if v.language.lower() == language.lower()]
+            
+        return voices
     
     async def get_agent_voices(self, agent: str) -> Dict[str, Any]:
         """
@@ -435,14 +394,14 @@ class MurfVoiceService:
         """
         if agent not in AGENT_VOICE_MAPPING:
             return {
-                "primary": MURF_INDIAN_VOICES["en-IN-isha"],
-                "alternatives": [MURF_INDIAN_VOICES["en-IN-arohi"]]
+                "primary": MURF_INDIAN_VOICES["aditi"],
+                "alternatives": [MURF_INDIAN_VOICES["priya"]]
             }
             
         mapping = AGENT_VOICE_MAPPING[agent]
         return {
             "primary": MURF_INDIAN_VOICES[mapping["primary"]],
-            "alternatives": [MURF_INDIAN_VOICES[vid] for vid in mapping["alternatives"] if vid in MURF_INDIAN_VOICES],
+            "alternatives": [MURF_INDIAN_VOICES[vid] for vid in mapping["alternatives"]],
             "tone": mapping["tone"]
         }
     
@@ -463,28 +422,25 @@ class MurfVoiceService:
         """
         if not sample_text:
             voice = MURF_INDIAN_VOICES.get(voice_id)
-            if voice and "hindi" in voice.language.lower():
-                sample_text = "नमस्ते! मैं आपका AI साथी हूं। आज मैं आपकी कैसे मदद कर सकती हूं?"
+            if voice:
+                if voice.language == "Hindi":
+                    sample_text = "नमस्ते! मैं आपका AI साथी हूं। आज मैं आपकी कैसे मदद कर सकती हूं?"
+                else:
+                    sample_text = "Hello! I'm your AI companion. How can I help you today?"
             else:
-                sample_text = "Hello! I'm your AI companion. How can I help you today?"
+                sample_text = "Hello! This is a voice preview."
         
-        result = await self.generate_speech(
+        return await self.generate_speech(
             text=sample_text,
             voice_id=voice_id,
             speed=1.0,
-            pitch=1.0,
-            encode_as_base64=False
+            pitch=1.0
         )
-        
-        # Ensure we return bytes
-        if isinstance(result, str):
-            return base64.b64decode(result)
-        return result
     
     async def generate_streaming_speech(
         self,
         text: str,
-        voice_id: str = "en-IN-isha",
+        voice_id: str = "aditi",
         **kwargs
     ) -> StreamingResponse:
         """
@@ -498,22 +454,49 @@ class MurfVoiceService:
         Returns:
             StreamingResponse with audio data
         """
-        audio_data = await self.generate_speech(
-            text=text,
-            voice_id=voice_id,
-            encode_as_base64=False,
-            **kwargs
-        )
-        
-        # Ensure we have bytes
-        if isinstance(audio_data, str):
-            audio_data = base64.b64decode(audio_data)
+        audio_data = await self.generate_speech(text, voice_id, **kwargs)
         
         return StreamingResponse(
             io.BytesIO(audio_data),
             media_type="audio/mpeg",
             headers={
-                "Content-Disposition": f"attachment; filename=speech_{voice_id}.mp3",
-                "Content-Length": str(len(audio_data))
+                "Content-Disposition": "inline; filename=speech.mp3",
+                "Cache-Control": "public, max-age=3600"
             }
         )
+    
+    def get_voice_info(self, voice_id: str) -> Optional[MurfVoice]:
+        """Get information about a specific voice"""
+        return MURF_INDIAN_VOICES.get(voice_id)
+    
+    async def health_check(self) -> Dict[str, Any]:
+        """Check Murf AI service health"""
+        if not self.api_key:
+            return {"status": "disabled", "reason": "API key not configured"}
+            
+        try:
+            await self._ensure_session()
+            assert self.session is not None, "Session should be initialized"
+            async with self.session.get(f"{self.base_url}/health") as response:
+                if response.status == 200:
+                    return {"status": "healthy", "voices_available": len(MURF_INDIAN_VOICES)}
+                else:
+                    return {"status": "unhealthy", "status_code": response.status}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+    
+    async def configure_agent_voice(self, agent: str, voice_config: Dict[str, Any]):
+        """
+        Configure voice settings for a specific agent
+        
+        Args:
+            agent: Agent name (mitra, guru, parikshak)
+            voice_config: Voice configuration dictionary
+        """
+        try:
+            # This method can be used to update agent voice mappings dynamically
+            # For now, we'll just log the configuration
+            logger.info(f"Voice configuration for {agent}: {voice_config}")
+            
+        except Exception as e:
+            logger.error(f"Failed to configure voice for {agent}: {e}")
