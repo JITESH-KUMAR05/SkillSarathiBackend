@@ -450,3 +450,6 @@ def get_rag_system() -> AdvancedRAGSystem:
 
 # For backward compatibility, create rag_system as a callable that returns the instance
 rag_system = get_rag_system
+
+# Alias for enhanced_rag_system compatibility
+advanced_rag_system = get_rag_system()

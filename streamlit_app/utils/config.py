@@ -15,8 +15,8 @@ class FrontendConfig(BaseSettings):
     WEBSOCKET_URL: str = "ws://localhost:8000"
     HEALTH_ENDPOINT: str = "/health"
     AGENTS_ENDPOINT: str = "/agents"
-    CHAT_ENDPOINT: str = "/api/chat/send"
-    VOICE_ENDPOINT: str = "/api/chat/voice/generate"
+    CHAT_ENDPOINT: str = "/api/v1/chat/enhanced"
+    VOICE_ENDPOINT: str = "/api/v1/voice/tts"
     
     # App Settings
     APP_TITLE: str = "🙏 BuddyAgents - Your AI Companions"

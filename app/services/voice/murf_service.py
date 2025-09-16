@@ -284,18 +284,18 @@ class MurfVoiceService:
             audio_format=format
         )
         
-        # Check cache first
+        # Check cache first for faster response
         if self.voice_cache:
             cached_audio = await self.voice_cache.get_cached_speech(text, voice_id)
             if cached_audio:
-                logger.info(f"Retrieved cached speech for voice {voice_id}")
+                logger.info(f"✅ Cache hit for voice {voice_id} - instant response")
                 if isinstance(cached_audio, dict) and "audio_data" in cached_audio:
                     return cached_audio["audio_data"]
                 elif isinstance(cached_audio, (bytes, str)):
                     return cached_audio
 
         try:
-            # Prepare Murf API request parameters
+            # Prepare optimized Murf API request parameters
             generation_params = {
                 "text": text,
                 "voice_id": voice_id,
@@ -309,49 +309,60 @@ class MurfVoiceService:
             if pitch != 1.0:
                 generation_params["pitch"] = int((pitch - 1.0) * 50)  # Convert to Murf pitch (-50 to 50)
             
-            logger.info(f"Generating speech with Murf AI: voice={voice_id}, length={len(text)}")
+            logger.info(f"🎤 Generating speech with Murf AI: voice={voice_id}, length={len(text)}")
+            start_time = asyncio.get_event_loop().time()
             
-            # Run generation in thread pool since Murf SDK is synchronous
+            # Use optimized thread pool for better performance
             loop = asyncio.get_event_loop()
             
             def _generate():
                 if not self.client:
                     raise HTTPException(status_code=503, detail="Voice service not configured")
                 return self.client.text_to_speech.generate(**generation_params)
-                
-            response = await loop.run_in_executor(None, _generate)
+            
+            # Generate with timeout for better user experience
+            response = await asyncio.wait_for(
+                loop.run_in_executor(None, _generate),
+                timeout=15.0  # Reduced timeout for faster failure
+            )
+            
+            generation_time = asyncio.get_event_loop().time() - start_time
             
             if encode_as_base64:
                 audio_data = response.encoded_audio
                 if not audio_data:
                     raise HTTPException(status_code=500, detail="No audio data received from Murf")
                 
-                # Cache successful generation (store as base64 string)
+                # Cache successful generation asynchronously for speed
                 if self.voice_cache:
-                    await self.voice_cache.cache_generated_speech(text, voice_id, base64.b64decode(audio_data))
+                    asyncio.create_task(self.voice_cache.cache_generated_speech(text, voice_id, base64.b64decode(audio_data)))
                 
-                logger.info(f"Successfully generated speech: base64 length={len(audio_data)}")
+                logger.info(f"✅ Speech generated in {generation_time:.2f}s: base64 length={len(audio_data)}")
                 return audio_data
             else:
-                # Download audio from URL and return bytes
+                # Download audio from URL with parallel caching
                 audio_url = response.audio_file
                 if not audio_url:
                     raise HTTPException(status_code=500, detail="No audio URL received from Murf")
                 
-                async with httpx.AsyncClient() as client:
+                # Download with optimized client settings
+                async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
                     audio_response = await client.get(audio_url)
                     if audio_response.status_code != 200:
                         raise HTTPException(status_code=500, detail="Failed to download audio from Murf")
                     
                     audio_bytes = audio_response.content
                     
-                    # Cache successful generation
+                    # Cache asynchronously for speed
                     if self.voice_cache:
-                        await self.voice_cache.cache_generated_speech(text, voice_id, audio_bytes)
+                        asyncio.create_task(self.voice_cache.cache_generated_speech(text, voice_id, audio_bytes))
                     
-                    logger.info(f"Successfully generated speech: {len(audio_bytes)} bytes")
+                    logger.info(f"✅ Speech generated in {generation_time:.2f}s: {len(audio_bytes)} bytes")
                     return audio_bytes
                 
+        except asyncio.TimeoutError:
+            logger.error(f"Speech generation timeout after 15s for voice {voice_id}")
+            raise HTTPException(status_code=408, detail="Voice generation timeout - please try again")
         except HTTPException:
             raise
         except Exception as e:

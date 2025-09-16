@@ -51,7 +51,7 @@ class BuddyAgentsAPI:
             data = {
                 "message": message,
                 "agent_type": agent,
-                "user_id": user_id,
+                "candidate_id": user_id,  # Backend expects candidate_id
                 "voice_enabled": False
             }
             
@@ -78,8 +78,7 @@ class BuddyAgentsAPI:
             # Use JSON data for the voice endpoint
             data = {
                 "text": text,
-                "agent_type": agent,
-                "user_id": "streamlit_user"
+                "agent": agent  # Backend expects 'agent' not 'agent_type'
             }
             
             # Debug: Log the request

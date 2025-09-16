@@ -12,6 +12,7 @@ import base64
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from openai import AsyncAzureOpenAI
 from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,26 +20,64 @@ class AzureOpenAIService:
     """Production Azure OpenAI service with advanced model routing for BuddyAgents platform"""
     
     def __init__(self):
-        """Initialize Azure OpenAI client with environment variables"""
-        self.client = AsyncAzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-        )
+        """Initialize Azure OpenAI service with lazy client initialization"""
+        self._client = None
+        self.chat_deployment = None
+        self.gpt_model = None
+        self.o1_deployment = None
+        self.embedding_deployment = None
+        self.tts_deployment = None
+        self.dalle_deployment = None
+        self.whisper_deployment = None
+        self.sora_deployment = None
+        self.realtime_deployment = None
+        self.transcribe_deployment = None
+        self.endpoint = None
+        self.api_key = None
         
-        # Advanced model deployments with routing capabilities
-        self.chat_deployment = os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "buddyagents-model-router")
-        self.embedding_deployment = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small")
+        # Initialize system prompts
+        self.__init_system_prompts()
+    
+    @property
+    def client(self):
+        """Lazy initialization of Azure OpenAI client"""
+        if self._client is None:
+            settings = get_settings()
+            
+            api_key = settings.AZURE_OPENAI_API_KEY
+            endpoint = settings.AZURE_OPENAI_ENDPOINT
+            
+            if not api_key or not endpoint:
+                raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set")
+            
+            self._client = AsyncAzureOpenAI(
+                api_key=api_key,
+                api_version=settings.AZURE_OPENAI_API_VERSION,
+                azure_endpoint=endpoint
+            )
+            
+            # Initialize model deployments
+            self.chat_deployment = settings.AZURE_OPENAI_DEPLOYMENT_NAME
+            self.gpt_model = "gpt-4o"
+            self.o1_deployment = "o1-preview-buddyagents"
+            self.embedding_deployment = "text-embedding-3-small"
+            self.tts_deployment = os.getenv("AZURE_TTS_DEPLOYMENT", "tts-1-hd-buddyagents")
+            self.dalle_deployment = os.getenv("AZURE_DALLE_DEPLOYMENT", "dall-e-3-buddyagents")
+            self.whisper_deployment = os.getenv("AZURE_WHISPER_DEPLOYMENT", "whisper-1-buddyagents")
+            
+            # Specialized model deployments
+            self.sora_deployment = os.getenv("AZURE_SORA_DEPLOYMENT", "sora-buddyagents")
+            self.realtime_deployment = os.getenv("AZURE_REALTIME_DEPLOYMENT", "gpt-realtime-buddyagents")
+            self.transcribe_deployment = os.getenv("AZURE_TRANSCRIBE_DEPLOYMENT", "gpt-4o-transcribe-buddyagents")
+            
+            # Store endpoint and API key
+            self.endpoint = endpoint
+            self.api_key = api_key
         
-        # Specialized model deployments
-        self.sora_deployment = os.getenv("AZURE_SORA_DEPLOYMENT", "sora-buddyagents")
-        self.realtime_deployment = os.getenv("AZURE_REALTIME_DEPLOYMENT", "gpt-realtime-buddyagents")
-        self.transcribe_deployment = os.getenv("AZURE_TRANSCRIBE_DEPLOYMENT", "gpt-4o-transcribe-buddyagents")
-        
-        # Azure endpoint and API key for advanced features
-        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        self.api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        
+        return self._client
+    
+    def __init_system_prompts(self):
+        """Initialize agent-specific system prompts"""
         # Agent-specific system prompts optimized for model router
         self.system_prompts = {
             "mitra": """You are Mitra (मित्र), a warm and caring AI friend for Indian users. 
