@@ -17,8 +17,9 @@ from .config import config
 class BuddyAgentsAPI:
     """Synchronous API client for BuddyAgents backend"""
     
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, session_manager=None):
         self.base_url = base_url or config.BACKEND_URL
+        self.session_manager = session_manager
         self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json",
@@ -45,15 +46,24 @@ class BuddyAgentsAPI:
             st.error(f"Failed to fetch agents: {e}")
             return []
     
-    def send_chat_message(self, message: str, agent: str, user_id: str = "streamlit_user") -> Dict[str, Any]:
-        """Send chat message to agent"""
+    def send_chat_message(self, message: str, agent: str, user_id: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Send chat message to agent with session support"""
         try:
             data = {
                 "message": message,
                 "agent_type": agent,
                 "candidate_id": user_id,  # Backend expects candidate_id
-                "voice_enabled": False
+                "voice_enabled": True  # Enable voice for better responses
             }
+            
+            # Add session_id if provided for conversation continuity
+            if session_id:
+                data["session_id"] = session_id
+            elif self.session_manager:
+                # Get session_id from session manager if available
+                agent_session_id = self.session_manager.get_session_id(agent)
+                if agent_session_id:
+                    data["session_id"] = agent_session_id
             
             response = self.session.post(
                 f"{self.base_url}{config.CHAT_ENDPOINT}",
@@ -61,9 +71,20 @@ class BuddyAgentsAPI:
             )
             
             if response.status_code == 200:
-                return response.json()
+                response_data = response.json()
+                
+                # Store session_id in session manager if available
+                if self.session_manager and 'session_id' in response_data:
+                    self.session_manager.store_session_id(agent, response_data['session_id'])
+                
+                return response_data
             else:
                 response.raise_for_status()
+                return {  # Fallback return
+                    "response": f"HTTP {response.status_code} error: {response.text}",
+                    "agent_type": agent,
+                    "error": True
+                }
                 
         except Exception as e:
             return {
@@ -137,6 +158,43 @@ class BuddyAgentsAPI:
             st.error(f"Full error: {traceback.format_exc()}")
             return None
 
+    def upload_document(self, agent: str, files: Dict[str, Any]) -> Dict[str, Any]:
+        """Upload document to backend for processing"""
+        try:
+            # Remove Content-Type header for file uploads
+            headers = dict(self.session.headers)
+            if "Content-Type" in headers:
+                del headers["Content-Type"]
+            
+            # Get user/candidate ID
+            user_id = "anonymous_user"
+            if self.session_manager and hasattr(self.session_manager, 'get_user_id'):
+                user_id = self.session_manager.get_user_id()
+            
+            # Prepare form data
+            form_data = {
+                'candidate_id': user_id
+            }
+            
+            url = f"{self.base_url}/api/v1/documents/{agent}/upload"
+            response = requests.post(url, files=files, data=form_data, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            st.error(f"Document upload failed: {e}")
+            return {"error": str(e)}
+
+    def process_document(self, agent: str, document_id: str) -> Dict[str, Any]:
+        """Process uploaded document for text extraction"""
+        try:
+            url = f"{self.base_url}/api/v1/documents/{agent}/process/{document_id}"
+            response = self.session.post(url)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            st.error(f"Document processing failed: {e}")
+            return {"error": str(e)}
+
 class AsyncBuddyAgentsAPI:
     """Asynchronous API client for real-time features"""
     
@@ -171,9 +229,15 @@ class AsyncBuddyAgentsAPI:
             st.error(f"WebSocket receive failed: {e}")
             raise
 
-# Global API client instances
+# Global instances (initialized with session_manager in each page)
 api_client = BuddyAgentsAPI()
 async_api_client = AsyncBuddyAgentsAPI()
+
+# Initialize with session_manager when available
+def init_api_client_with_session(session_manager):
+    """Initialize API client with session manager"""
+    global api_client
+    api_client = BuddyAgentsAPI(session_manager=session_manager)
 
 # Helper functions for Streamlit integration
 @st.cache_data(ttl=60)
@@ -186,7 +250,7 @@ def get_available_agents():
     """Cached agents list"""
     return api_client.get_agents()
 
-def send_message_with_loading(message: str, agent: str, user_id: str = "streamlit_user"):
-    """Send message with loading indicator"""
+def send_message_with_loading(message: str, agent: str, user_id: str = "streamlit_user", session_id: Optional[str] = None):
+    """Send message with loading indicator and session support"""
     with st.spinner(f"🤔 {config.AGENTS[agent]['name']} is thinking..."):
-        return api_client.send_chat_message(message, agent, user_id)
+        return api_client.send_chat_message(message, agent, user_id, session_id)

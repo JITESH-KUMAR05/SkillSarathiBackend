@@ -216,11 +216,8 @@ class MCPManager:
         metadata: Optional[Dict[str, Any]] = None,
         audio_url: Optional[str] = None
     ) -> AgentMessage:
-        """Add a message to session history"""
+        """Add a message to session history (gracefully handle missing sessions)"""
         
-        if session_id not in self.active_sessions:
-            raise ValueError(f"Session {session_id} not found")
-            
         message = AgentMessage(
             message_id=str(uuid.uuid4()),
             session_id=session_id,
@@ -232,8 +229,13 @@ class MCPManager:
             audio_url=audio_url
         )
         
-        self.message_history[session_id].append(message)
-        self.active_sessions[session_id].messages_count += 1
+        # Only store in memory if session exists
+        if session_id in self.active_sessions:
+            self.message_history[session_id].append(message)
+            self.active_sessions[session_id].messages_count += 1
+        else:
+            logger.warning(f"Session {session_id} not found - message will not be stored")
+            # Continue processing without storing in session
         
         # Store in database
         async with AsyncSessionLocal() as db:

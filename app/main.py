@@ -17,13 +17,13 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.security import SecurityMiddleware, RateLimitService
-# from app.services.azure_openai_service import azure_openai_service  # Temporarily disabled
+from app.llm.azure_openai_service import azure_openai_service  # Re-enabled for chat
 from app.services.voice import get_voice_manager
 
 # Import API routers
 from app.api import chat_simple
 from app.api.candidates import router as candidates_router
-from app.api.enhanced_chat import router as enhanced_chat_router
+from app.api.enhanced_chat_simple import router as enhanced_chat_router
 from app.api.documents import router as documents_router
 from app.api.voice import router as voice_router
 
@@ -113,9 +113,11 @@ app.include_router(chat_simple.router, prefix="/api/v1/legacy/chat", tags=["Lega
 async def health_check():
     """Comprehensive health check endpoint"""
     try:
-        # Check Azure OpenAI service health (temporarily disabled)
-        # azure_health = await azure_openai_service.health_check()
-        azure_health = {"status": "disabled", "message": "Azure OpenAI temporarily disabled for voice testing"}
+        # Check Azure OpenAI service health
+        try:
+            azure_health = await azure_openai_service.health_check()
+        except Exception as e:
+            azure_health = {"status": "error", "message": f"Azure OpenAI error: {str(e)}"}
         
         # Check voice services health
         voice_health = {"status": "available", "murf_integration": "active"}
