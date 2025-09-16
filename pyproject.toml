@@ -73,6 +73,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "pydub>=0.25.1",
     "murf>=2.0.2",
+    "streamlit-mic-recorder>=0.0.8",
 ]
 requires-python = ">= 3.11"
 

@@ -17,14 +17,15 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.security import SecurityMiddleware, RateLimitService
-from app.services.azure_openai_service import azure_openai_service
+# from app.services.azure_openai_service import azure_openai_service  # Temporarily disabled
 from app.services.voice import get_voice_manager
 
 # Import API routers
-from app.api.chat_router import router as chat_router
+from app.api import chat_simple
+from app.api.candidates import router as candidates_router
+from app.api.enhanced_chat import router as enhanced_chat_router
+from app.api.documents import router as documents_router
 from app.api.voice import router as voice_router
-from app.api.video_router import router as video_router
-from app.api.user_router import router as user_router
 
 # Configure logging
 logging.basicConfig(
@@ -100,10 +101,11 @@ if settings.environment == "production":
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Include API routers
-app.include_router(chat_router, prefix="/api/v1/chat", tags=["Chat"])
+app.include_router(enhanced_chat_router, prefix="/api/v1/chat", tags=["Enhanced Chat"])
+app.include_router(candidates_router, prefix="/api/v1/candidates", tags=["Candidates & MCP"])
+app.include_router(documents_router, prefix="/api/v1/documents", tags=["Documents & Guru"])
 app.include_router(voice_router, prefix="/api/v1/voice", tags=["Voice"])
-app.include_router(video_router, prefix="/api/v1/video", tags=["Video"])
-app.include_router(user_router, prefix="/api/v1/users", tags=["Users"])
+app.include_router(chat_simple.router, prefix="/api/v1/legacy/chat", tags=["Legacy Chat"])
 
 
 # Health Check Endpoint
@@ -111,8 +113,9 @@ app.include_router(user_router, prefix="/api/v1/users", tags=["Users"])
 async def health_check():
     """Comprehensive health check endpoint"""
     try:
-        # Check Azure OpenAI service health
-        azure_health = await azure_openai_service.health_check()
+        # Check Azure OpenAI service health (temporarily disabled)
+        # azure_health = await azure_openai_service.health_check()
+        azure_health = {"status": "disabled", "message": "Azure OpenAI temporarily disabled for voice testing"}
         
         # Check voice services health
         voice_health = {"status": "not_initialized"}

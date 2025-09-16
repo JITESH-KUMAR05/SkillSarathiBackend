@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     max_file_size: int = 10485760  # 10MB
     rate_limit_per_minute: int = 60
     
+    @property
+    def DEBUG(self) -> bool:
+        """Alias for debug property for compatibility"""
+        return self.debug
+    
     # Security Configuration
     jwt_secret_key: str = "your-super-secure-jwt-secret-key-change-this"
     jwt_algorithm: str = "HS256"
@@ -37,6 +42,11 @@ class Settings(BaseSettings):
     # Database Configuration
     database_url: str = "sqlite+aiosqlite:///./buddyagents.db"
     redis_url: str = "redis://localhost:6379"
+    
+    @property
+    def database_url_async(self) -> str:
+        """Get async database URL"""
+        return self.database_url
     
     # Azure OpenAI - Primary Resource (East US 2)
     azure_openai_api_key_primary: str = ""
@@ -61,6 +71,11 @@ class Settings(BaseSettings):
     # Optional Services
     murf_api_key: Optional[str] = None
     github_token: Optional[str] = None
+    
+    @property
+    def MURF_API_KEY(self) -> str:
+        """Legacy support for MURF_API_KEY with fallback to murf_api_key"""
+        return self.murf_api_key or ""
     
     # CORS Configuration
     cors_origins: List[str] = [

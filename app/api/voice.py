@@ -6,6 +6,7 @@ import logging
 import base64
 import os
 from typing import Optional
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 # Import our working Murf service
 from ..services.voice.murf_service import MurfVoiceService
 from ..core.config import get_settings
+from app.voice_performance import performance_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -123,22 +125,65 @@ async def get_voices(murf_service: MurfVoiceService = Depends(get_murf_service))
 
 @router.post("/test")
 async def test_voice(request: VoiceTestRequest, murf_service: MurfVoiceService = Depends(get_murf_service)):
-    """Test voice generation"""
+    """Test voice generation with performance monitoring"""
+    import uuid
+    session_id = str(uuid.uuid4())
+    
     try:
-        audio_data = await murf_service.generate_speech(
+        # Start performance monitoring
+        metrics = performance_monitor.start_session(session_id, request.agent, request.text)
+        logger.info(f"🎤 Starting optimized voice test for {request.agent}")
+        
+        # Generate audio using the optimized streaming approach
+        from ..murf_streaming import murf_client
+        
+        audio_chunks = []
+        chunk_count = 0
+        first_chunk_recorded = False
+        
+        # Use streaming for optimized latency
+        async for chunk in murf_client.stream_text_to_speech(
             text=request.text,
-            agent=request.agent,
-            encode_as_base64=False
-        )
+            user_id="test_user",
+            agent_type=request.agent
+        ):
+            if chunk and len(chunk) > 0:
+                audio_chunks.append(chunk)
+                chunk_count += 1
+                
+                # Record performance metrics
+                if not first_chunk_recorded:
+                    performance_monitor.record_first_chunk(session_id, len(chunk))
+                    first_chunk_recorded = True
+                else:
+                    performance_monitor.record_chunk(session_id, len(chunk))
+        
+        if audio_chunks:
+            audio_data = b''.join(audio_chunks)
+            performance_monitor.complete_session(session_id, success=True)
+        else:
+            # Fallback to standard service
+            audio_data = await murf_service.generate_speech(
+                text=request.text,
+                agent=request.agent,
+                encode_as_base64=False
+            )
+            performance_monitor.complete_session(session_id, success=True, error="Used fallback service")
         
         if isinstance(audio_data, str):
             audio_data = base64.b64decode(audio_data)
             
         return Response(
             content=audio_data,
-            media_type="audio/mpeg"
+            media_type="audio/mpeg",
+            headers={
+                "X-Performance-Session": session_id,
+                "X-Agent-Type": request.agent,
+                "X-Audio-Length": str(len(audio_data))
+            }
         )
     except Exception as e:
+        performance_monitor.complete_session(session_id, success=False, error=str(e))
         logger.error(f"❌ Voice test failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -221,4 +266,68 @@ async def get_auto_voice_status():
         )
     except Exception as e:
         logger.error(f"❌ Auto-voice status check failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/performance/stats")
+async def get_voice_performance_stats(agent: Optional[str] = None):
+    """Get voice generation performance statistics"""
+    try:
+        stats = performance_monitor.get_performance_stats(agent_type=agent)
+        return {
+            "performance_stats": stats,
+            "optimization_status": "active",
+            "timestamp": datetime.now().isoformat(),
+            "agent_filter": agent
+        }
+    except Exception as e:
+        logger.error(f"❌ Performance stats failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/performance/health")
+async def get_voice_performance_health():
+    """Get voice performance health summary"""
+    try:
+        stats = performance_monitor.get_performance_stats()
+        
+        if "error" in stats:
+            return {
+                "status": "no_data",
+                "message": "No performance data available yet",
+                "recommendations": [
+                    "Generate some voice responses to collect performance data",
+                    "Ensure voice is enabled in chat settings"
+                ]
+            }
+        
+        # Assess performance health
+        first_chunk_ok = stats["first_chunk_latency"]["meets_target_pct"] >= 80
+        total_time_ok = stats["total_generation_time"]["meets_target_pct"] >= 70
+        success_rate_ok = stats["success_rate"] >= 95
+        
+        overall_health = "excellent" if all([first_chunk_ok, total_time_ok, success_rate_ok]) else \
+                        "good" if sum([first_chunk_ok, total_time_ok, success_rate_ok]) >= 2 else \
+                        "needs_improvement"
+        
+        recommendations = []
+        if not first_chunk_ok:
+            recommendations.append("Consider optimizing WebSocket connection pooling")
+        if not total_time_ok:
+            recommendations.append("Review text preprocessing and chunking strategies")
+        if not success_rate_ok:
+            recommendations.append("Check API connectivity and error handling")
+        
+        return {
+            "status": overall_health,
+            "health_score": sum([first_chunk_ok, total_time_ok, success_rate_ok]) / 3 * 100,
+            "metrics": {
+                "first_chunk_latency_target_met": first_chunk_ok,
+                "total_time_target_met": total_time_ok,
+                "success_rate_healthy": success_rate_ok
+            },
+            "recommendations": recommendations,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Performance health check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
