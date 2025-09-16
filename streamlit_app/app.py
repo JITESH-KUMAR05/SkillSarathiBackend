@@ -138,8 +138,7 @@ def load_session_from_storage():
             # Validate this candidate exists
             if validate_candidate_session(candidate_id):
                 st.session_state.candidate_id = candidate_id
-                # Clear URL params
-                del st.query_params['candidate_id']
+                del st.query_params['candidate_id']  # Clear URL params
 
 def validate_candidate_session(candidate_id: str) -> bool:
     """Validate if a candidate session is still valid"""
@@ -199,7 +198,7 @@ def login_candidate(email: str) -> Optional[Dict[str, Any]]:
         if response.status_code == 200:
             user_data = response.json()
             # Persist session for the logged-in user
-            persist_session(user_data['id'], user_data)
+            persist_session(user_data['candidate_id'], user_data)
             return user_data
         else:
             st.error(f"Login failed: {response.text}")

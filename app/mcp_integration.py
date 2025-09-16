@@ -128,19 +128,39 @@ class MCPManager:
         # Store in memory and database
         self.candidate_profiles[candidate.candidate_id] = candidate
         
-        # Create user in database
-        async with AsyncSessionLocal() as db:
-            db_user = User(
-                id=candidate.candidate_id,
-                username=email.split('@')[0],
-                email=email,
-                hashed_password="temp_hash",  # Will be properly handled in auth
-                full_name=name,
-                interests=skills or [],
-                preferred_language="en"
-            )
-            db.add(db_user)
-            await db.commit()
+        # Create user in database with proper error handling
+        try:
+            async with AsyncSessionLocal() as db:
+                # Check if user already exists by email
+                from sqlalchemy import select
+                result = await db.execute(select(User).where(User.email == email))
+                existing_user_obj = result.scalar_one_or_none()
+                
+                if existing_user_obj:
+                    logger.warning(f"User with email {email} already exists, updating candidate mapping")
+                    # Update our mapping to use existing user ID
+                    candidate.candidate_id = existing_user_obj.id
+                    self.candidate_profiles[candidate.candidate_id] = candidate
+                    return candidate
+                
+                # Create new user
+                db_user = User(
+                    id=candidate.candidate_id,
+                    username=email.split('@')[0] + '_' + str(uuid.uuid4())[:8],  # Ensure uniqueness
+                    email=email,
+                    hashed_password="temp_hash",  # Will be properly handled in auth
+                    full_name=name,
+                    interests=skills or [],
+                    preferred_language="en"
+                )
+                db.add(db_user)
+                await db.commit()
+                await db.refresh(db_user)
+                
+        except Exception as e:
+            logger.error(f"Database error during candidate registration: {e}")
+            # Continue with in-memory registration even if DB fails
+            logger.info("Continuing with in-memory candidate registration")
             
         logger.info(f"Registered new candidate: {candidate.candidate_id}")
         return candidate
