@@ -47,6 +47,7 @@ A next-generation multi-agent companion system with voice integration, video int
   - Crisis support resources
   - Voice-enabled emotional check-ins
 
+
 ### 🎓 Guru - Learning Mentor Agent  
 - **Purpose**: Educational guidance and skill development
 - **Features**:

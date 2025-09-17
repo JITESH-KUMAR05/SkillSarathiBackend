@@ -531,7 +531,7 @@ async def search_documents(
 # ===============================================
 
 async def extract_text_from_file(file_path: str, filename: str) -> str:
-    """Extract text content from uploaded file for Guru processing"""
+    """Extract text content from uploaded file for Guru processing with PDF/DOCX support"""
     
     file_ext = os.path.splitext(filename)[1].lower()
     
@@ -549,6 +549,46 @@ async def extract_text_from_file(file_path: str, filename: str) -> str:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
                 return f"Code file ({file_ext}):\n\n{content}"
+        
+        elif file_ext == '.pdf':
+            # Extract text from PDF using PyMuPDF
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(file_path)
+                text_content = ""
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)
+                    text_content += page.get_text()
+                doc.close()
+                
+                if text_content.strip():
+                    return f"PDF Content from {filename}:\n\n{text_content}"
+                else:
+                    return f"PDF file {filename} uploaded but no text content could be extracted."
+            except ImportError:
+                return f"PDF file {filename} uploaded but PyMuPDF library not available for text extraction."
+            except Exception as pdf_error:
+                logger.error(f"PDF extraction error for {filename}: {pdf_error}")
+                return f"PDF file {filename} uploaded but text extraction failed: {str(pdf_error)}"
+        
+        elif file_ext in ['.docx', '.doc']:
+            # Extract text from DOCX using python-docx
+            try:
+                from docx import Document
+                doc = Document(file_path)
+                text_content = ""
+                for paragraph in doc.paragraphs:
+                    text_content += paragraph.text + "\n"
+                
+                if text_content.strip():
+                    return f"DOCX Content from {filename}:\n\n{text_content}"
+                else:
+                    return f"DOCX file {filename} uploaded but no text content could be extracted."
+            except ImportError:
+                return f"DOCX file {filename} uploaded but python-docx library not available for text extraction."
+            except Exception as docx_error:
+                logger.error(f"DOCX extraction error for {filename}: {docx_error}")
+                return f"DOCX file {filename} uploaded but text extraction failed: {str(docx_error)}"
         
         else:
             return f"File uploaded: {filename}. Text extraction not available for {file_ext} files."
@@ -693,7 +733,8 @@ async def upload_document_for_guru(
             "file_size": len(file_content),
             "processing_status": "completed",
             "upload_timestamp": datetime.now().isoformat(),
-            "guru_ready": True
+            "guru_ready": True,
+            "extracted_text": extracted_text  # Include extracted text in response
         }
         
     except Exception as e:

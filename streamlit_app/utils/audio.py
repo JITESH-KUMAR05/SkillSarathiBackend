@@ -29,52 +29,21 @@ class AudioManager:
                 st.warning("⚠️ Placeholder audio data received")
                 return False
             
-            # Method 1: Use BytesIO with st.audio (recommended approach)
-            import io
-            try:
-                audio_io = io.BytesIO(audio_data)
-                st.audio(audio_io, format='audio/wav')
-                st.success("✅ Audio ready! Click ▶️ to play")
-                return True
-            except Exception as bytesio_error:
-                st.warning(f"BytesIO audio failed: {bytesio_error}")
+            # Use BytesIO to avoid MediaFileStorageError - this creates in-memory file
+            audio_io = io.BytesIO(audio_data)
+            audio_io.seek(0)  # Reset position to beginning
             
-            # Method 2: HTML5 audio with base64 as fallback
-            import base64
-            audio_b64 = base64.b64encode(audio_data).decode()
-            
-            # Create autoplay HTML5 audio player
-            audio_html = f"""
-            <div style="margin: 20px 0; padding: 20px; background: linear-gradient(135deg, #e8f5e8 0%, #f3e5f5 100%); 
-                        border-radius: 15px; border: 3px solid #4CAF50; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-                <h3 style="color: #2E7D32; margin: 0 0 15px 0; text-align: center;">🎵 AI Voice Response</h3>
-                <audio controls style="width: 100%; max-width: 600px; margin: 10px 0;" preload="auto" autoplay>
-                    <source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">
-                    <source src="data:audio/mpeg;base64,{audio_b64}" type="audio/mpeg">
-                    <source src="data:audio/ogg;base64,{audio_b64}" type="audio/ogg">
-                    <p style="color: red; text-align: center;">❌ Your browser doesn't support audio playback. Please try Chrome/Firefox.</p>
-                </audio>
-                <div style="text-align: center; margin-top: 15px;">
-                    <p style="margin: 5px 0; color: #1565C0; font-weight: bold;">💡 Audio should play automatically!</p>
-                    <p style="margin: 5px 0; color: #424242;">If you don't hear audio, click the ▶️ play button above</p>
-                    <p style="margin: 5px 0; color: #666; font-size: 12px;">🔍 Audio: {len(audio_data)} bytes | Format: WAV</p>
-                </div>
-            </div>
-            """
-            
-            st.markdown(audio_html, unsafe_allow_html=True)
-            st.success("✅ HTML5 audio player loaded!")
-            
+            # Use st.audio with the BytesIO object directly
+            st.audio(audio_io, format='audio/wav', autoplay=False)
+            st.success("✅ Audio ready! Click ▶️ to play")
             return True
-            
+                
         except Exception as e:
-            st.error(f"❌ Audio playback failed: {e}")
-            import traceback
-            st.error(f"Error details: {traceback.format_exc()}")
+            st.error(f"❌ Audio playback failed: {str(e)}")
             return False
 
     def play_audio(self, audio_data: bytes, auto_play: bool = True) -> str:
-        """Play audio using safe HTML5 method to avoid MediaFileHandler issues"""
+        """Play audio using safe BytesIO method to avoid MediaFileHandler issues"""
         try:
             # Validate audio data
             if not audio_data or len(audio_data) == 0:
@@ -89,71 +58,14 @@ class AudioManager:
             # Log audio info for debugging
             st.info(f"🔊 Audio received: {len(audio_data)} bytes")
             
-            # Add download button for manual testing
-            try:
-                st.download_button(
-                    label="💾 Download Audio File for Testing",
-                    data=audio_data,
-                    file_name=f"voice_response_{len(audio_data)}_bytes.wav",
-                    mime="audio/wav",
-                    help="Download the audio file to test it manually"
-                )
-            except Exception as download_error:
-                st.warning(f"Download button failed: {download_error}")
-            
-            # Use the safe audio player to avoid MediaFileHandler issues
+            # Use the safe audio player method
             if self.play_audio_safe(audio_data):
                 return "audio_ready"
             else:
                 return ""
-            try:
-                st.download_button(
-                    label="💾 Download Audio File for Testing",
-                    data=audio_data,
-                    file_name=f"voice_response_{len(audio_data)}_bytes.wav",
-                    mime="audio/wav",
-                    help="Download the audio file to test it manually"
-                )
-            except Exception as download_error:
-                st.warning(f"Download button failed: {download_error}")
-            
-            # Try multiple audio formats for better compatibility
-            try:
-                # Use safe audio method to avoid MediaFileHandler issues
-                return "audio_ready" if self.play_audio_safe(audio_data) else ""
-            except Exception as st_audio_error:
-                st.warning(f"Streamlit audio failed: {st_audio_error}")
                 
-                # Fallback: Use HTML5 audio with base64 encoding
-                try:
-                    import base64
-                    audio_b64 = base64.b64encode(audio_data).decode()
-                    
-                    # Create HTML audio player with better compatibility
-                    audio_html = f"""
-                    <div style="margin: 15px 0; padding: 10px; background: #f0f2f6; border-radius: 8px;">
-                        <p><strong>� Voice Response Ready</strong></p>
-                        <audio controls style="width: 100%; max-width: 400px;" preload="auto">
-                            <source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">
-                            <source src="data:audio/mpeg;base64,{audio_b64}" type="audio/mpeg">
-                            <source src="data:audio/ogg;base64,{audio_b64}" type="audio/ogg">
-                            <p style="color: red;">❌ Your browser doesn't support audio playback. Please try Chrome/Firefox.</p>
-                        </audio>
-                        <p><small>💡 Click the play button above to hear the AI's voice response</small></p>
-                    </div>
-                    """
-                    
-                    st.markdown(audio_html, unsafe_allow_html=True)
-                    st.success("🎵 Fallback audio player loaded!")
-                    return audio_b64
-                    
-                except Exception as html_error:
-                    st.error(f"HTML audio fallback failed: {html_error}")
-                    return ""
-            
         except Exception as e:
-            st.error(f"Audio playback completely failed: {e}")
-            st.info(f"💡 Debug info: audio_data type={type(audio_data)}, length={len(audio_data) if audio_data else 0}")
+            st.error(f"❌ Audio playback failed: {str(e)}")
             return ""
     
     def create_audio_player(self, audio_data: bytes, key: Optional[str] = None) -> bool:

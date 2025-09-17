@@ -80,26 +80,11 @@ class AzureOpenAIService:
         """Initialize agent-specific system prompts"""
         # Agent-specific system prompts optimized for model router
         self.system_prompts = {
-            "mitra": """You are Mitra (मित्र), a warm and caring AI friend for Indian users. 
-                       Provide emotional support, listen to problems, and offer friendly advice in ENGLISH ONLY. 
-                       Be empathetic, understanding, and culturally aware of Indian context while responding in clear English.
-                       Keep responses conversational and supportive, typically 2-3 sentences unless more detail is needed.
-                       IMPORTANT: Always respond in English language, never in Hindi or any other language.
-                       The model router will automatically select the best model (GPT-5-nano for simple chats, GPT-5 for complex emotional guidance).""",
+            "mitra": """You are Mitra, a warm and caring AI friend. Provide emotional support, listen to problems, and offer friendly advice. Be empathetic, understanding, and culturally aware of Indian context. Keep responses conversational and supportive, typically 2-3 sentences unless more detail is needed. Always respond in English.""",
             
-            "guru": """You are Guru (गुरु), an AI learning mentor specializing in education and skill development. 
-                      Help with studies, career guidance, interview preparation, and learning new skills in ENGLISH ONLY. 
-                      Be patient, encouraging, and provide structured, actionable learning advice.
-                      Use examples relevant to Indian context but always respond in clear English.
-                      IMPORTANT: Always respond in English language, never in Hindi or any other language.
-                      The model router will select GPT-5 for complex teaching scenarios, GPT-4.1 for coding tutorials.""",
+            "guru": """You are Guru, an AI learning mentor specializing in education and skill development. Help with studies, career guidance, interview preparation, and learning new skills. Be patient, encouraging, and provide structured, actionable learning advice. Always respond in English.""",
             
-            "parikshak": """You are Parikshak (परीक्षक), an AI interview coach and technical assessor. 
-                          Help with interview preparation, conduct mock interviews, and provide technical assessments in ENGLISH ONLY. 
-                          Be professional, provide constructive feedback, and help improve interview skills.
-                          Focus on Indian job market context and common interview practices but always respond in clear English.
-                          IMPORTANT: Always respond in English language, never in Hindi or any other language.
-                          The model router will use GPT-4.1 for technical assessments, GPT-5 for behavioral coaching."""
+            "parikshak": """You are Mitra, a warm and caring AI friend. Provide interview preparation support, listen to career concerns, and offer professional advice. Be empathetic, understanding, and supportive. Keep responses conversational and helpful, typically 2-3 sentences unless more detail is needed. Always respond in English."""
         }
         
         logger.info("� Advanced Azure OpenAI Service initialized with Model Router, Sora, and Realtime capabilities")
@@ -171,8 +156,16 @@ class AzureOpenAIService:
                     max_tokens=max_tokens,
                     temperature=temperature
                 )
-                if response.choices:
-                    yield response.choices[0].message.content
+                if response.choices and response.choices[0].message.content:
+                    content = response.choices[0].message.content.strip()
+                    if content:  # Only yield if there's actual content
+                        yield content
+                    else:
+                        logger.warning(f"Empty content from Azure OpenAI for {agent_type}")
+                        yield "I'm processing your request. Could you please be more specific about what you'd like to know?"
+                else:
+                    logger.warning(f"No choices in Azure OpenAI response for {agent_type}")
+                    yield "I'm having trouble generating a response right now. Please try again."
                     
         except Exception as e:
             error_msg = f"Azure OpenAI error: {str(e)}"

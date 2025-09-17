@@ -26,26 +26,84 @@ from utils.session import session_manager
 from utils.api_client import api_client
 from utils.audio import audio_manager
 
+# Import voice input functionality
+try:
+    from streamlit_mic_recorder import mic_recorder
+    MIC_RECORDER_AVAILABLE = True
+except ImportError:
+    MIC_RECORDER_AVAILABLE = False
+    st.warning("⚠️ Voice input not available. Install: uv add streamlit-mic-recorder")
+
 def show_mitra_header():
-    """Show Mitra's header section"""
+    """Show Mitra's enhanced header section"""
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Add custom CSS for better styling
+    st.markdown("""
+    <style>
+    .mitra-header {
+        background: linear-gradient(135deg, #FF6B6B 0%, #FF8E8E 50%, #FFA8A8 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    }
+    .mitra-subtitle {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+        opacity: 0.9;
+    }
+    .feature-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 10px;
+        border: 1px solid #dee2e6;
+        margin: 0.5rem 0;
+        transition: transform 0.2s;
+    }
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    with col2:
-        st.title("🤗 मित्र (Mitra)")
-        st.subheader("Your Caring AI Friend")
-        
-        st.markdown("""
-        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #FF6B6B 0%, #FF8E8E 100%); border-radius: 10px; color: white;'>
-            <h3>💝 I'm here to listen and support you</h3>
-            <p>Share your thoughts, feelings, and experiences with me. I'll provide empathy, encouragement, and a friendly ear.</p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <div class="mitra-header">
+        <h1>🤗 मित्र (Mitra)</h1>
+        <div class="mitra-subtitle">Your Caring AI Friend & Emotional Support Companion</div>
+        <p>💝 I'm here to listen, understand, and support you through life's journey</p>
+        <p style="font-size: 0.9rem; margin-top: 1rem;">
+            🌟 Empathetic • 🗣️ Bilingual • 💬 Always Available • 🤗 Non-judgmental
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 def show_mood_selector():
-    """Show mood selection interface"""
+    """Show enhanced mood selection interface"""
     
-    st.subheader("🌈 How are you feeling today?")
+    st.markdown("### 🌈 How are you feeling today?")
+    
+    # Add mood selector styling
+    st.markdown("""
+    <style>
+    .mood-button {
+        text-align: center;
+        padding: 1rem;
+        margin: 0.25rem;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border: 2px solid #dee2e6;
+        transition: all 0.3s ease;
+    }
+    .mood-button:hover {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-color: #2196f3;
+        transform: scale(1.05);
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     col1, col2, col3, col4, col5 = st.columns(5)
     
@@ -66,11 +124,18 @@ def show_mood_selector():
                 selected_mood = mood
                 session_manager.update_preference("current_mood", mood)
                 st.success(f"Noted! You're feeling {mood.lower()} today.")
+                st.balloons()  # Add celebration effect
     
-    # Show current mood
+    # Show current mood with better styling
     current_mood = session_manager.get_preference("current_mood")
     if current_mood:
-        st.info(f"Current mood: {current_mood}")
+        mood_emoji = [k for k, v in moods.items() if v == current_mood][0]
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); 
+                   padding: 1rem; border-radius: 10px; text-align: center; margin: 1rem 0;">
+            <h4 style="margin: 0; color: #2e7d32;">Current Mood: {mood_emoji} {current_mood}</h4>
+        </div>
+        """, unsafe_allow_html=True)
 
 def show_conversation_starters():
     """Show conversation starter suggestions"""
@@ -131,6 +196,29 @@ def show_mitra_chat():
     # Enhanced message input with mood context
     current_mood = session_manager.get_preference("current_mood")
     mood_context = f" (Feeling {current_mood})" if current_mood else ""
+    
+    # Voice input section
+    if MIC_RECORDER_AVAILABLE:
+        st.markdown("### 🎤 Voice Input")
+        voice_input = mic_recorder(
+            start_prompt="🎤 Start Speaking",
+            stop_prompt="⏹️ Stop Recording", 
+            just_once=False,
+            use_container_width=True,
+            callback=None,
+            args=(),
+            kwargs={},
+            key=f"mitra_voice_input"
+        )
+        
+        # Process voice input
+        if voice_input and voice_input.get('bytes'):
+            st.success("🎵 Voice recorded! Processing...")
+            # Here you would typically transcribe the audio
+            # For now, we'll show a placeholder
+            st.info("🔄 Voice transcription feature coming soon!")
+    else:
+        st.info("🎤 Install voice packages to enable speech input")
     
     # Voice Conversation Interface
     audio_manager.create_voice_conversation_interface(agent)
@@ -204,7 +292,8 @@ def show_mitra_chat():
             response = api_client.send_chat_message(
                 empathy_prompt,
                 agent,
-                session_manager.get_user_id()
+                session_manager.get_user_id(),
+                session_manager.get_session_id(agent)  # Add session_id
             )
         
         # Add response with empathy processing
@@ -212,18 +301,12 @@ def show_mitra_chat():
             response_text = response["response"]
             session_manager.add_message(agent, "assistant", response_text)
             
-            # Automatic voice generation for conversational experience
+            # Generate voice with caring tone
             if session_manager.get_preference("voice_enabled", True):
-                with st.spinner("🔊 Mitra is speaking..."):
-                    audio_data = api_client.generate_voice(response_text, agent)
-                    if audio_data and audio_data != b"placeholder_audio":
-                        # Use improved audio playback
-                        audio_manager.play_audio(audio_data, auto_play=True)
-                        st.balloons()  # Celebratory effect for successful voice
-                    elif audio_data == b"placeholder_audio":
-                        st.info("🎵 Voice response ready! (Audio system starting...)")
-                    else:
-                        st.warning("🔊 Voice generation failed. Please try clicking the voice button.")
+                audio_data = api_client.generate_voice(response_text, agent)
+                if audio_data:
+                    auto_play = session_manager.get_preference("auto_play", True)
+                    audio_manager.play_audio(audio_data, auto_play)
         
         st.rerun()
 
@@ -299,6 +382,31 @@ def main():
         show_mitra_chat()
     
     with col2:
+        # Voice Settings
+        with st.expander("🎵 Voice Settings", expanded=False):
+            voice_enabled = st.checkbox(
+                "🔊 Enable Voice Responses",
+                value=session_manager.get_preference("voice_enabled", True),
+                key="mitra_voice_enabled"
+            )
+            session_manager.set_preference("voice_enabled", voice_enabled)
+            
+            if voice_enabled:
+                auto_play = st.checkbox(
+                    "🔄 Auto-play Responses",
+                    value=session_manager.get_preference("auto_play", True),
+                    key="mitra_auto_play",
+                    help="Automatically play voice when Mitra responds"
+                )
+                session_manager.set_preference("auto_play", auto_play)
+                
+                if auto_play:
+                    st.success("✅ Voice will play automatically")
+                else:
+                    st.info("ℹ️ Click voice button to hear responses")
+            else:
+                st.warning("⚠️ Voice responses disabled")
+        
         # Mood selector
         show_mood_selector()
         

@@ -27,21 +27,55 @@ from utils.session import session_manager
 from utils.api_client import api_client
 from utils.audio import audio_manager
 
+# Import voice input functionality
+try:
+    from streamlit_mic_recorder import mic_recorder
+    MIC_RECORDER_AVAILABLE = True
+except ImportError:
+    MIC_RECORDER_AVAILABLE = False
+    st.warning("⚠️ Voice input not available. Install: uv add streamlit-mic-recorder")
+
 def show_parikshak_header():
-    """Show Parikshak's header section"""
+    """Show Parikshak's enhanced header section"""
     
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Add custom CSS for Parikshak styling
+    st.markdown("""
+    <style>
+    .parikshak-header {
+        background: linear-gradient(135deg, #7E57C2 0%, #673AB7 50%, #5E35B1 100%);
+        padding: 2rem;
+        border-radius: 15px;
+        color: white;
+        text-align: center;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(126, 87, 194, 0.3);
+    }
+    .parikshak-subtitle {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+        opacity: 0.9;
+    }
+    .interview-metric {
+        background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 0.5rem;
+        text-align: center;
+        border: 1px solid #ce93d8;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
-    with col2:
-        st.title("💼 परीक्षक (Parikshak)")
-        st.subheader("Your Interview Coach")
-        
-        st.markdown("""
-        <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #45B7D1 0%, #5BC0EB 100%); border-radius: 10px; color: white;'>
-            <h3>🎯 Prepare for Success</h3>
-            <p>I'll help you ace your interviews with practice sessions, feedback, and confidence building.</p>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <div class="parikshak-header">
+        <h1>💼 परीक्षक (Parikshak)</h1>
+        <div class="parikshak-subtitle">Your AI Interview Coach & Career Mentor</div>
+        <p>🎯 Master interviews, build confidence, and advance your career</p>
+        <p style="font-size: 0.9rem; margin-top: 1rem;">
+            💪 Confidence Building • 📊 Performance Analytics • 🎤 Mock Interviews • 📈 Skill Assessment
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
 def show_interview_dashboard():
     """Show interview preparation dashboard"""
@@ -315,6 +349,27 @@ def show_parikshak_chat():
     else:
         st.info("🙏 Namaste! I'm Parikshak, your interview coach. Ready to practice?")
     
+    # Voice input section
+    if MIC_RECORDER_AVAILABLE:
+        st.markdown("### 🎤 Voice Interview Practice")
+        voice_input = mic_recorder(
+            start_prompt="🎤 Practice Interview (Voice)",
+            stop_prompt="⏹️ Stop Recording", 
+            just_once=False,
+            use_container_width=True,
+            callback=None,
+            args=(),
+            kwargs={},
+            key=f"parikshak_voice_input"
+        )
+        
+        # Process voice input
+        if voice_input and voice_input.get('bytes'):
+            st.success("🎵 Voice recorded! Processing...")
+            st.info("🔄 Voice transcription feature coming soon!")
+    else:
+        st.info("🎤 Install voice packages to enable speech input")
+    
     # Interview-focused input
     with st.form("parikshak_chat_form", clear_on_submit=True):
         col1, col2 = st.columns([5, 1])
@@ -344,39 +399,32 @@ def show_parikshak_chat():
     
     # Process interview response
     if send_button and user_input:
-        session_manager.add_message(agent, "user", user_input)
-        
-        # Enhanced prompt for interview feedback
-        feedback_prompt = f"""
-        As an experienced interviewer, please evaluate this response and provide constructive feedback:
-        
-        Response: {user_input}
-        
-        Please provide:
-        1. Strengths of the response
-        2. Areas for improvement  
-        3. Overall rating (1-10)
-        4. Next interview question
-        
-        Be encouraging but honest in your feedback.
-        """
+        # Add user message to conversation history
+        session_manager.add_message("parikshak", "user", user_input)
         
         with st.spinner("💼 Parikshak is evaluating your response..."):
+            # Get current session for conversation continuity
+            current_session_id = session_manager.get_session_id("parikshak")
+            
             response = api_client.send_chat_message(
-                feedback_prompt,
-                agent,
-                session_manager.get_user_id()
+                user_input,  # Send original message, not modified prompt
+                "parikshak",
+                session_manager.get_user_id(),
+                current_session_id
             )
         
-        if response and "response" in response:
-            session_manager.add_message(agent, "assistant", response["response"])
+        if response and "response" in response and not response.get("error", False):
+            session_manager.add_message("parikshak", "assistant", response["response"])
             
             # Generate voice feedback
             if session_manager.get_preference("voice_enabled", True):
-                audio_data = api_client.generate_voice(response["response"], agent)
+                audio_data = api_client.generate_voice(response["response"], "parikshak")
                 if audio_data:
                     auto_play = session_manager.get_preference("auto_play", True)
                     audio_manager.play_audio(audio_data, auto_play)
+        else:
+            error_msg = "There seems to be a technical issue on my end. Let's continue with your preparation - please rephrase your question and I'll do my best to help."
+            session_manager.add_message("parikshak", "assistant", error_msg)
         
         st.rerun()
 
@@ -424,6 +472,33 @@ def main():
     
     # Interview dashboard
     show_interview_dashboard()
+    
+    st.divider()
+    
+    # Voice Settings
+    with st.expander("🎵 Voice Settings", expanded=False):
+        voice_enabled = st.checkbox(
+            "🔊 Enable Voice Responses",
+            value=session_manager.get_preference("voice_enabled", True),
+            key="parikshak_voice_enabled"
+        )
+        session_manager.set_preference("voice_enabled", voice_enabled)
+        
+        if voice_enabled:
+            auto_play = st.checkbox(
+                "🔄 Auto-play Responses",
+                value=session_manager.get_preference("auto_play", True),
+                key="parikshak_auto_play",
+                help="Automatically play voice when Parikshak responds"
+            )
+            session_manager.set_preference("auto_play", auto_play)
+            
+            if auto_play:
+                st.success("✅ Voice will play automatically")
+            else:
+                st.info("ℹ️ Click voice button to hear responses")
+        else:
+            st.warning("⚠️ Voice responses disabled")
     
     st.divider()
     

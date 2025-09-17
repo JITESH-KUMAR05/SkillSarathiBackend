@@ -23,6 +23,14 @@ class SessionManager:
         if "user_id" not in st.session_state:
             st.session_state.user_id = str(uuid.uuid4())
         
+        # Session IDs for backend communication
+        if "session_ids" not in st.session_state:
+            st.session_state.session_ids = {
+                "mitra": f"session_{uuid.uuid4().hex[:8]}",
+                "guru": f"session_{uuid.uuid4().hex[:8]}",
+                "parikshak": f"session_{uuid.uuid4().hex[:8]}"
+            }
+        
         # Current agent
         if "current_agent" not in st.session_state:
             st.session_state.current_agent = "mitra"
@@ -73,7 +81,23 @@ class SessionManager:
         """Get the current agent"""
         return st.session_state.get("current_agent", "mitra")
     
-    def add_message(self, agent: str, role: str, content: str, timestamp: datetime = None):
+    def get_session_id(self, agent: str) -> str:
+        """Get the session ID for a specific agent"""
+        self.init_session_state()
+        return st.session_state.session_ids.get(agent, f"session_{uuid.uuid4().hex[:8]}")
+    
+    def store_session_id(self, agent: str, session_id: str):
+        """Store session ID for an agent"""
+        self.init_session_state()
+        st.session_state.session_ids[agent] = session_id
+    
+    def regenerate_session_id(self, agent: str) -> str:
+        """Generate a new session ID for an agent"""
+        new_session_id = f"session_{uuid.uuid4().hex[:8]}"
+        st.session_state.session_ids[agent] = new_session_id
+        return new_session_id
+    
+    def add_message(self, agent: str, role: str, content: str, timestamp: Optional[datetime] = None):
         """Add a message to conversation history"""
         if timestamp is None:
             timestamp = datetime.now()
@@ -117,6 +141,10 @@ class SessionManager:
         """Get a user preference"""
         self.init_session_state()
         return st.session_state.preferences.get(key, default)
+    
+    def update_preference(self, key: str, value: Any):
+        """Update a user preference (alias for set_preference)"""
+        self.set_preference(key, value)
     
     def set_user_profile(self, name: str, email: str):
         """Set user profile information"""
